@@ -1,0 +1,17 @@
+.dart_tool/
+.pub-cache/
+.pub/
+build/
+.idea/
+.vscode/
+android/
+ios/
+linux/
+macos/
+windows/
+waterleak2/
+*.sql
+*.ino
+terminals/
+
+
