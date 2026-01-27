@@ -1832,13 +1832,13 @@ class _DashboardViewState extends State<DashboardView>
                   final bool narrow = constraints.maxWidth < 600;
                   final spacing = r.isSmallPhone ? 4.0 : 6.0;
                   final buttons = <Widget>[
-                    _buildActionButton('Announcements', Icons.campaign,
+                    _buildActionButton(r, 'Announcements', Icons.campaign,
                         () => _showAnnouncements()),
-                    _buildActionButton('Valve Control', Icons.settings,
+                    _buildActionButton(r, 'Valve Control', Icons.settings,
                         _actionsEnabled ? () => _openValveControl() : null),
-                    _buildActionButton('History', Icons.history,
+                    _buildActionButton(r, 'History', Icons.history,
                         _actionsEnabled ? () => _openHistory() : null),
-                    _buildActionButton('Contact', Icons.contact_support,
+                    _buildActionButton(r, 'Contact', Icons.contact_support,
                         _actionsEnabled ? () => _openContact() : null),
                   ];
                   if (narrow) {
@@ -1890,79 +1890,74 @@ class _DashboardViewState extends State<DashboardView>
   }
 
   // _buildPercentageCard removed (unused)
-  Widget _buildActionButton(String title, IconData icon,
+  Widget _buildActionButton(Responsive r, String title, IconData icon,
       [VoidCallback? onTap]) {
     final bool disabled = onTap == null;
-    return Builder(
-      builder: (context) {
-        final r = Responsive(context);
-        Widget buttonContent = Container(
-          constraints: BoxConstraints(
-            minWidth: 0,
-            minHeight: r.isSmallPhone ? 60 : 70,
-          ),
-          height: r.isSmallPhone ? 60 : 70,
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.95),
-            borderRadius: BorderRadius.circular(r.cardRadius),
-            border: Border.all(
-              color: Color(0xFF1e3c72).withValues(alpha: disabled ? 0.2 : 0.3),
-              width: 1.5,
+    Widget buttonContent = Container(
+      constraints: BoxConstraints(
+        minWidth: 0,
+        minHeight: r.isSmallPhone ? 60 : 70,
+      ),
+      height: r.isSmallPhone ? 60 : 70,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.95),
+        borderRadius: BorderRadius.circular(r.cardRadius),
+        border: Border.all(
+          color: Color(0xFF1e3c72).withValues(alpha: disabled ? 0.2 : 0.3),
+          width: 1.5,
+        ),
+      ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: r.isSmallPhone ? 8 : 12,
+          vertical: r.isSmallPhone ? 6 : 8,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              color: Color(0xFF1e3c72),
+              size: r.isSmallPhone ? 20 : 24,
             ),
-          ),
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: r.isSmallPhone ? 8 : 12,
-              vertical: r.isSmallPhone ? 6 : 8,
+            SizedBox(height: r.isSmallPhone ? 2 : 4),
+            Text(
+              title,
+              style: TextStyle(
+                color: Color(0xFF1e3c72),
+                fontSize: r.isSmallPhone ? 10 : 12,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 2,
             ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Icon(
-                  icon,
-                  color: Color(0xFF1e3c72),
-                  size: r.isSmallPhone ? 20 : 24,
-                ),
-                SizedBox(height: r.isSmallPhone ? 2 : 4),
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: Color(0xFF1e3c72),
-                    fontSize: r.isSmallPhone ? 10 : 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  textAlign: TextAlign.center,
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 2,
-                ),
-              ],
-            ),
-          ),
-        );
+          ],
+        ),
+      ),
+    );
 
-        if (disabled) {
-          return Opacity(
-            opacity: 0.5,
-            child: buttonContent,
-          );
-        }
+    if (disabled) {
+      return Opacity(
+        opacity: 0.5,
+        child: buttonContent,
+      );
+    }
 
-        return GestureDetector(
+    return GestureDetector(
+      onTap: onTap,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
           onTap: onTap,
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onTap,
-              borderRadius: BorderRadius.circular(r.cardRadius),
-              splashColor: Color(0xFF1e3c72).withValues(alpha: 0.1),
-              highlightColor: Color(0xFF1e3c72).withValues(alpha: 0.05),
-              child: buttonContent,
-            ),
-          ),
-        );
-      },
+          borderRadius: BorderRadius.circular(r.cardRadius),
+          splashColor: Color(0xFF1e3c72).withValues(alpha: 0.1),
+          highlightColor: Color(0xFF1e3c72).withValues(alpha: 0.05),
+          child: buttonContent,
+        ),
+      ),
     );
   }
 

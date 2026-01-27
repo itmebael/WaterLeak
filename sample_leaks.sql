@@ -73,3 +73,4 @@ COMMIT;
 -- ORDER BY detection_date DESC 
 -- LIMIT 10;
 
+
