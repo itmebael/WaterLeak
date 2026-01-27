@@ -399,8 +399,6 @@ class _AdminViewState extends State<AdminView> with TickerProviderStateMixin {
                                 _showAddContactDialog('plumber');
                               } else if (_tabController.index == 1) {
                                 _showAddAnnouncementDialog();
-                              } else {
-                                _showAddDeviceDialog();
                               }
                             },
                             padding: const EdgeInsets.all(10),
@@ -572,86 +570,6 @@ class _AdminViewState extends State<AdminView> with TickerProviderStateMixin {
     }
   }
 
-  void _showAddDeviceDialog() {
-    final nameController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: Colors.transparent,
-          title: Text('Add Device'),
-          content: _glass(
-            radius: 22,
-            padding: const EdgeInsets.all(14),
-            child: TextField(
-              controller: nameController,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                labelText: 'Device Name',
-                labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.75)),
-                hintText: 'Enter device name',
-                hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.55)),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.25)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(color: _cyan.withValues(alpha: 0.75), width: 1.3),
-                ),
-              ),
-              autofocus: true,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              style: TextButton.styleFrom(foregroundColor: Colors.white.withValues(alpha: 0.9)),
-              child: Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                if (nameController.text.trim().isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Device name cannot be empty')),
-                  );
-                  return;
-                }
-                try {
-                  await _supabaseService.createDevice({
-                    'device_name': nameController.text.trim(),
-                  });
-                  if (mounted) {
-                    Navigator.of(context).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Device added successfully')),
-                    );
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error adding device: $e')),
-                    );
-                  }
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _blue.withValues(alpha: 0.70),
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  side: BorderSide(color: Colors.white.withValues(alpha: 0.22)),
-                ),
-              ),
-              child: Text('Add'),
-            ),
-          ],
-        );
-      },
-    );
-  }
 
   Widget _buildAnalyticsTab(Responsive r) {
     return SingleChildScrollView(
