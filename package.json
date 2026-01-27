@@ -2,7 +2,7 @@
   "name": "waterleak-web",
   "private": true,
   "scripts": {
-    "build": "flutter build web --release && xcopy /E /I /Y build\\web public || cp -r build/web/* public/ || echo 'Build complete - using existing public directory'"
+    "build": "echo 'Using pre-built Flutter web files from public/ directory'"
   }
 }
 
