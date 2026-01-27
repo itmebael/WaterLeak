@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "flutter build web --release",
+  "buildCommand": "",
   "outputDirectory": "build/web",
   "framework": null,
   "routes": [
