@@ -103,14 +103,20 @@ class _HistoryViewState extends State<HistoryView>
       });
 
       try {
+        List<Map<String, dynamic>> leaks;
         if (selectedPropertyId == null) {
-          waterDataHistory = [];
+          // Fetch all leaks when no property is selected
+          leaks = await _supabaseService.getAllLeakDetections();
         } else {
-          final leaks =
-              await _supabaseService.getLeakDetections(selectedPropertyId!);
-          waterDataHistory = _mapLeakDetectionsToHistory(leaks);
-          _calculateStatistics();
+          leaks = await _supabaseService.getLeakDetections(selectedPropertyId!);
+          // If the property-filtered query returns nothing (e.g. leak rows have NULL property_id),
+          // fall back to global leaks so History still shows the dashboard records.
+          if (leaks.isEmpty) {
+            leaks = await _supabaseService.getAllLeakDetections();
+          }
         }
+        waterDataHistory = _mapLeakDetectionsToHistory(leaks);
+        _calculateStatistics();
       } catch (e) {
         print('Error loading leak detections: $e');
         waterDataHistory = [];
@@ -125,6 +131,87 @@ class _HistoryViewState extends State<HistoryView>
       setState(() {
         isLoading = false;
       });
+    }
+  }
+
+  Future<void> _promptResolveLeak(String leakId) async {
+    final r = Responsive(context);
+    final controller = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          title: Text(
+            'Fix Leak',
+            style: TextStyle(
+              fontSize: r.titleFontSize,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1e3c72),
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Add resolution notes (optional):',
+                style: TextStyle(
+                  fontSize: r.bodyFontSize,
+                  color: Color(0xFF1e3c72).withValues(alpha: 0.75),
+                ),
+              ),
+              SizedBox(height: r.smallSpacing),
+              TextField(
+                controller: controller,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: 'e.g., Repaired pipe / replaced gasket',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child:
+                  Text('Cancel', style: TextStyle(color: Color(0xFF1e3c72))),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              child: Text('Mark Resolved',
+                  style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await _supabaseService.resolveLeakDetection(
+        leakId,
+        resolutionNotes: controller.text,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('✅ Leak marked as resolved')),
+      );
+      await _loadHistoryData();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ Failed to resolve leak: $e')),
+      );
     }
   }
 
@@ -578,6 +665,8 @@ class _HistoryViewState extends State<HistoryView>
     final severity = item['severity'] as String? ?? 'Normal';
     final status = item['status'] as String? ?? 'Unknown';
     final color = item['color'] as Color;
+    final leakId = (item['id'] ?? '').toString();
+    final statusLower = status.toLowerCase();
 
     return Container(
       margin: EdgeInsets.only(bottom: 12),
@@ -701,6 +790,22 @@ class _HistoryViewState extends State<HistoryView>
                       ),
                     ),
                   ),
+                if (statusLower != 'resolved' && leakId.isNotEmpty) ...[
+                  SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => _promptResolveLeak(leakId),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                      ),
+                      child: Text(
+                        'Fix Leak (Mark Resolved)',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

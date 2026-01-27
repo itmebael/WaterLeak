@@ -126,10 +126,97 @@ class _DashboardViewState extends State<DashboardView>
         isLoading = true;
       });
 
+      // Always load leaks, even if no property is selected
+      try {
+        // First try to get active leaks
+        var leaks = await _supabaseService.getAllLeakDetections(status: 'active');
+        
+        // If no active leaks found, try without status filter (get all)
+        if (leaks.isEmpty) {
+          print('⚠️ No active leaks found, fetching all leaks');
+          leaks = await _supabaseService.getAllLeakDetections();
+        }
+        
+        String _cap(String v) =>
+            v.isEmpty ? v : v[0].toUpperCase() + v.substring(1);
+        leakAlerts = leaks.map((l) {
+          final String severity =
+              (l['severity'] ?? 'low').toString().toLowerCase();
+          final Color color = severity == 'critical'
+              ? Colors.purple
+              : severity == 'high'
+                  ? Colors.red
+                  : severity == 'medium'
+                      ? Colors.orange
+                      : Colors.green;
+          final status = (l['status'] ?? 'active').toString().toLowerCase();
+          return {
+            'id': l['id'],
+            'location': l['location_description'] ?? 'Unknown location',
+            'description': (l['leak_type'] ?? 'leak').toString(),
+            'status': _cap(status),
+            'severity': _cap(severity),
+            'time': DateTime.tryParse(l['detection_date'] ?? '')
+                    ?.toLocal()
+                    .toString() ??
+                '',
+            'color': color,
+          };
+        }).toList();
+        print('✅ Loaded ${leakAlerts.length} leak alerts (${leakAlerts.where((a) => a['status'].toString().toLowerCase() == 'active').length} active)');
+        if (leakAlerts.isNotEmpty) {
+          print('📋 Leak alerts details:');
+          for (int i = 0; i < leakAlerts.length; i++) {
+            final alert = leakAlerts[i];
+            print('   ${i + 1}. ${alert['location']} - Status: ${alert['status']}, Severity: ${alert['severity']}');
+          }
+          // Force UI update
+          setState(() {});
+        } else {
+          print('⚠️ No leak alerts found - checking database...');
+          // Try to fetch all leaks without filter
+          final allLeaks = await _supabaseService.getAllLeakDetections();
+          print('📊 Total leaks in database: ${allLeaks.length}');
+          if (allLeaks.isNotEmpty) {
+            // Map and update if we found leaks
+            String _cap(String v) => v.isEmpty ? v : v[0].toUpperCase() + v.substring(1);
+            leakAlerts = allLeaks.map((l) {
+              final String severity = (l['severity'] ?? 'low').toString().toLowerCase();
+              final Color color = severity == 'critical'
+                  ? Colors.purple
+                  : severity == 'high'
+                      ? Colors.red
+                      : severity == 'medium'
+                          ? Colors.orange
+                          : Colors.green;
+              final status = (l['status'] ?? 'active').toString().toLowerCase();
+              return {
+                'id': l['id'],
+                'location': l['location_description'] ?? 'Unknown location',
+                'description': (l['leak_type'] ?? 'leak').toString(),
+                'status': _cap(status),
+                'severity': _cap(severity),
+                'time': DateTime.tryParse(l['detection_date'] ?? '')?.toLocal().toString() ?? '',
+                'color': color,
+              };
+            }).toList();
+            setState(() {});
+          }
+        }
+      } catch (e) {
+        print('❌ Error loading leak alerts: $e');
+        setState(() {
+          leakAlerts = [];
+        });
+      }
+
       // Ensure there is at least one property
       final ensured = await _ensureProperty();
       if (ensured) {
         await _loadPropertyData();
+      } else {
+        // Even without property, load water control series for charts
+        await _loadWaterControlSeries();
       }
 
       setState(() {
@@ -164,6 +251,70 @@ class _DashboardViewState extends State<DashboardView>
           monthlyConsumption = futures[1];
           final leaks = futures[2];
 
+          // Only update leakAlerts if we got results, otherwise keep existing ones
+          if (leaks.isNotEmpty) {
+            String _cap(String v) =>
+                v.isEmpty ? v : v[0].toUpperCase() + v.substring(1);
+            leakAlerts = leaks.map((l) {
+            final String severity =
+                (l['severity'] ?? 'low').toString().toLowerCase();
+            final Color color = severity == 'critical'
+                ? Colors.purple
+                : severity == 'high'
+                    ? Colors.red
+                    : severity == 'medium'
+                        ? Colors.orange
+                        : Colors.green;
+            return {
+              'id': l['id'],
+              'location': l['location_description'] ?? 'Unknown location',
+              'description': (l['leak_type'] ?? 'leak').toString(),
+              'status': _cap((l['status'] ?? 'active').toString()),
+              'severity': _cap(severity),
+              'time': DateTime.tryParse(l['detection_date'] ?? '')
+                      ?.toLocal()
+                      .toString() ??
+                  '',
+              'color': color,
+            };
+            }).toList();
+            print('📋 Updated leak alerts from property: ${leakAlerts.length}');
+          } else {
+            print('⚠️ No leaks found for property, keeping existing ${leakAlerts.length} alerts');
+          }
+
+          // Calculate water savings
+          _calculateWaterSavings();
+
+          // Load water_connection_control for charts (current snapshot-based)
+          await _loadWaterControlSeries();
+
+          // Water data will be loaded from database
+
+          // Ensure we have data for charts (reload if needed)
+          if (weeklyUsage.isEmpty || todayFlow.isEmpty) {
+            print(
+                '⚠️ No water control data available, reloading device snapshot series');
+            await _loadWaterControlSeries();
+          }
+        } catch (e) {
+          print('Error loading from database: $e');
+          // Initialize empty data structures (but preserve leakAlerts if they exist)
+          dailyConsumption = [];
+          monthlyConsumption = [];
+          // Don't clear leakAlerts here - keep the ones loaded in _loadDashboardData
+          if (leakAlerts.isEmpty) {
+            leakAlerts = [];
+          }
+          weeklyUsage = [];
+          todayFlow = [];
+          return;
+        }
+      } else {
+        // No property selected - fetch all leaks for alerts
+        print('⚠️ No property selected, fetching all leaks');
+        try {
+          final leaks = await _supabaseService.getAllLeakDetections(status: 'active');
           String _cap(String v) =>
               v.isEmpty ? v : v[0].toUpperCase() + v.substring(1);
           leakAlerts = leaks.map((l) {
@@ -189,37 +340,18 @@ class _DashboardViewState extends State<DashboardView>
               'color': color,
             };
           }).toList();
-
-          // Calculate water savings
-          _calculateWaterSavings();
-
-          // Load water_connection_control for charts (current snapshot-based)
+          
+          // Load water_connection_control for charts
           await _loadWaterControlSeries();
-
-          // Water data will be loaded from database
-
-          // Ensure we have data for charts (reload if needed)
-          if (weeklyUsage.isEmpty || todayFlow.isEmpty) {
-            print(
-                '⚠️ No water control data available, reloading device snapshot series');
-            await _loadWaterControlSeries();
-          }
         } catch (e) {
-          print('Error loading from database: $e');
-          // Initialize empty data structures
-          dailyConsumption = [];
-          monthlyConsumption = [];
-          leakAlerts = [];
-          weeklyUsage = [];
-          todayFlow = [];
-          return;
+          print('Error loading all leaks: $e');
+          // Only clear if we don't have any from _loadDashboardData
+          if (leakAlerts.isEmpty) {
+            leakAlerts = [];
+          }
         }
-      } else {
-        // No property selected
-        print('⚠️ No property selected');
         dailyConsumption = [];
         monthlyConsumption = [];
-        leakAlerts = [];
         weeklyUsage = [];
         todayFlow = [];
         return;
@@ -228,13 +360,21 @@ class _DashboardViewState extends State<DashboardView>
       setState(() {});
     } catch (e) {
       print('Error loading property data: $e');
-      // Initialize empty data structures
+      // Initialize empty data structures (but preserve leakAlerts)
       dailyConsumption = [];
       monthlyConsumption = [];
-      leakAlerts = [];
+      // Don't clear leakAlerts - keep the ones loaded in _loadDashboardData
+      if (leakAlerts.isEmpty) {
+        leakAlerts = [];
+      }
       weeklyUsage = [];
       todayFlow = [];
     }
+    
+    // Always update UI after loading
+    setState(() {
+      print('🔄 UI updated: leakAlerts count = ${leakAlerts.length}');
+    });
   }
 
   Future<void> _loadWaterControlSeries() async {
@@ -427,8 +567,12 @@ class _DashboardViewState extends State<DashboardView>
       if (!ok) return;
     }
     try {
-      final leaks =
-          await _supabaseService.getLeakDetections(selectedPropertyId!);
+      var leaks = await _supabaseService.getLeakDetections(selectedPropertyId!);
+      // If leaks aren't linked to a property_id (common in sample/ESP32 data),
+      // fall back to global leaks so History matches the dashboard alert count.
+      if (leaks.isEmpty) {
+        leaks = await _supabaseService.getAllLeakDetections();
+      }
       await Navigator.pushNamed(context, '/history', arguments: {
         'propertyId': selectedPropertyId,
         'leaks': leaks,
@@ -602,7 +746,7 @@ class _DashboardViewState extends State<DashboardView>
                         borderRadius: BorderRadius.circular(r.cardRadius),
                       ),
                       child: Text(
-                        '${leakAlerts.where((alert) => alert['status'] == 'Active').length} Active',
+                        '${leakAlerts.where((alert) => (alert['status']?.toString().toLowerCase() ?? '') == 'active').length} Active',
                         style: TextStyle(
                           color: Colors.red,
                           fontWeight: FontWeight.bold,
@@ -617,14 +761,55 @@ class _DashboardViewState extends State<DashboardView>
 
               // Alerts list
               Expanded(
-                child: ListView.builder(
-                  padding: EdgeInsets.symmetric(horizontal: r.mediumSpacing),
-                  itemCount: leakAlerts.length,
-                  itemBuilder: (context, index) {
-                    final alert = leakAlerts[index];
-                    return _buildLeakAlertItem(alert, r);
-                  },
-                ),
+                child: leakAlerts.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(r.mediumSpacing),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.check_circle_outline,
+                                size: 48,
+                                color: Colors.grey[400],
+                              ),
+                              SizedBox(height: r.smallSpacing),
+                              Text(
+                                'No leak alerts',
+                                style: TextStyle(
+                                  fontSize: r.bodyFontSize,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                              SizedBox(height: r.smallSpacing),
+                              Text(
+                                'All systems operating normally',
+                                style: TextStyle(
+                                  fontSize: r.smallFontSize,
+                                  color: Colors.grey[500],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : Builder(
+                        builder: (context) {
+                          print('🔔 Building ListView with ${leakAlerts.length} alerts');
+                          if (leakAlerts.isEmpty) {
+                            print('⚠️ WARNING: leakAlerts is empty in Builder!');
+                          }
+                          return ListView.builder(
+                            padding: EdgeInsets.symmetric(horizontal: r.mediumSpacing),
+                            itemCount: leakAlerts.length,
+                            itemBuilder: (context, index) {
+                              final alert = leakAlerts[index];
+                              print('🔔 Rendering leak alert ${index + 1}/${leakAlerts.length}: ${alert['location']} (status: ${alert['status']})');
+                              return _buildLeakAlertItem(alert, r);
+                            },
+                          );
+                        },
+                      ),
               ),
             ],
           ),
@@ -835,25 +1020,28 @@ class _DashboardViewState extends State<DashboardView>
   }
 
   Widget _buildLeakAlertItem(Map<String, dynamic> alert, Responsive r) {
-    return Container(
-      margin: EdgeInsets.only(bottom: r.mediumSpacing),
-      padding: EdgeInsets.all(r.mediumSpacing),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(r.cardRadius),
-        border: Border.all(
-          color: alert['color'].withValues(alpha: 0.3),
-          width: 2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 10,
-            offset: Offset(0, 5),
+    return InkWell(
+      onTap: () => _showLeakDetails(alert['id']),
+      borderRadius: BorderRadius.circular(r.cardRadius),
+      child: Container(
+        margin: EdgeInsets.only(bottom: r.mediumSpacing),
+        padding: EdgeInsets.all(r.mediumSpacing),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(r.cardRadius),
+          border: Border.all(
+            color: alert['color'].withValues(alpha: 0.3),
+            width: 2,
           ),
-        ],
-      ),
-      child: Column(
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black12,
+              blurRadius: 10,
+              offset: Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -946,8 +1134,238 @@ class _DashboardViewState extends State<DashboardView>
             ],
           ),
         ],
+        ),
       ),
     );
+  }
+
+  Future<void> _showLeakDetails(String? leakId) async {
+    if (leakId == null || leakId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Leak ID not available')),
+      );
+      return;
+    }
+
+    try {
+      final leak = await _supabaseService.getLeakDetectionById(leakId);
+      if (leak == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Leak details not found')),
+        );
+        return;
+      }
+
+      final r = Responsive(context);
+      final statusLower = (leak['status'] ?? '').toString().toLowerCase();
+      showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(r.cardRadius),
+            ),
+            title: Row(
+              children: [
+                Icon(Icons.warning, color: Colors.red, size: r.iconSize),
+                SizedBox(width: r.smallSpacing),
+                Expanded(
+                  child: Text(
+                    'Leak Detection Details',
+                    style: TextStyle(
+                      fontSize: r.titleFontSize,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF1e3c72),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildDetailRow('Location', leak['location_description'] ?? 'Not specified', r),
+                  _buildDetailRow('Leak Type', leak['leak_type'] ?? 'Unknown', r),
+                  _buildDetailRow('Severity', leak['severity'] ?? 'Unknown', r),
+                  _buildDetailRow('Status', leak['status'] ?? 'Unknown', r),
+                  _buildDetailRow('Detection Date', _formatDate(leak['detection_date']), r),
+                  if (leak['estimated_water_loss_liters'] != null)
+                    _buildDetailRow('Water Loss', '${(leak['estimated_water_loss_liters'] as num).toStringAsFixed(2)} L', r),
+                  if (leak['estimated_water_loss_rate'] != null)
+                    _buildDetailRow('Loss Rate', '${(leak['estimated_water_loss_rate'] as num).toStringAsFixed(2)} L/min', r),
+                  if (leak['pressure_drop'] != null)
+                    _buildDetailRow('Pressure Drop', '${(leak['pressure_drop'] as num).toStringAsFixed(2)} PSI', r),
+                  if (leak['flow_rate_anomaly'] != null)
+                    _buildDetailRow('Flow Anomaly', '${(leak['flow_rate_anomaly'] as num).toStringAsFixed(2)} L/min', r),
+                  if (leak['confidence_score'] != null)
+                    _buildDetailRow('Confidence', '${((leak['confidence_score'] as num) * 100).toStringAsFixed(1)}%', r),
+                  if (leak['resolved_date'] != null)
+                    _buildDetailRow('Resolved Date', _formatDate(leak['resolved_date']), r),
+                  if (leak['resolution_notes'] != null && leak['resolution_notes'].toString().isNotEmpty)
+                    _buildDetailRow('Resolution Notes', leak['resolution_notes'], r),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text('Close', style: TextStyle(color: Color(0xFF1e3c72))),
+              ),
+              if (statusLower == 'active')
+                ElevatedButton(
+                  onPressed: () async {
+                    Navigator.of(context).pop();
+                    await _promptResolveLeak(leakId);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                  ),
+                  child: Text('Fix Leak', style: TextStyle(color: Colors.white)),
+                ),
+              if (statusLower == 'active')
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    _openHistory();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Color(0xFF1e3c72),
+                  ),
+                  child: Text('View History', style: TextStyle(color: Colors.white)),
+                ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error loading leak details: $e')),
+      );
+    }
+  }
+
+  Future<void> _promptResolveLeak(String leakId) async {
+    final r = Responsive(context);
+    final controller = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(r.cardRadius),
+          ),
+          title: Text(
+            'Fix Leak',
+            style: TextStyle(
+              fontSize: r.titleFontSize,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1e3c72),
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Add resolution notes (optional):',
+                style: TextStyle(
+                  fontSize: r.bodyFontSize,
+                  color: Color(0xFF1e3c72).withValues(alpha: 0.75),
+                ),
+              ),
+              SizedBox(height: r.smallSpacing),
+              TextField(
+                controller: controller,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: 'e.g., Tightened pipe fitting, replaced valve, etc.',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(r.cardRadius),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child:
+                  Text('Cancel', style: TextStyle(color: Color(0xFF1e3c72))),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              child: Text('Mark Resolved',
+                  style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await _supabaseService.resolveLeakDetection(
+        leakId,
+        resolutionNotes: controller.text,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('✅ Leak marked as resolved')),
+      );
+      // Refresh leaks + UI
+      await _loadDashboardData();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ Failed to resolve leak: $e')),
+      );
+    }
+  }
+
+  Widget _buildDetailRow(String label, String value, Responsive r) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: r.smallSpacing),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              '$label:',
+              style: TextStyle(
+                fontSize: r.bodyFontSize,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1e3c72),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: r.bodyFontSize,
+                color: Colors.black87,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDate(dynamic date) {
+    if (date == null) return 'Not specified';
+    final dt = DateTime.tryParse(date.toString());
+    if (dt == null) return date.toString();
+    final local = dt.toLocal();
+    return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -1432,7 +1850,13 @@ class _DashboardViewState extends State<DashboardView>
                       children: buttons
                           .map((b) => SizedBox(
                                 width: buttonWidth,
-                                child: b,
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    maxWidth: buttonWidth,
+                                    minWidth: 0,
+                                  ),
+                                  child: b,
+                                ),
                               ))
                           .toList(),
                     );
@@ -1469,11 +1893,14 @@ class _DashboardViewState extends State<DashboardView>
   Widget _buildActionButton(String title, IconData icon,
       [VoidCallback? onTap]) {
     final bool disabled = onTap == null;
-    return LayoutBuilder(
-      builder: (context, constraints) {
+    return Builder(
+      builder: (context) {
         final r = Responsive(context);
         Widget buttonContent = Container(
-          width: double.infinity,
+          constraints: BoxConstraints(
+            minWidth: 0,
+            minHeight: r.isSmallPhone ? 60 : 70,
+          ),
           height: r.isSmallPhone ? 60 : 70,
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.95),
@@ -1491,6 +1918,7 @@ class _DashboardViewState extends State<DashboardView>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Icon(
                   icon,
@@ -1498,18 +1926,16 @@ class _DashboardViewState extends State<DashboardView>
                   size: r.isSmallPhone ? 20 : 24,
                 ),
                 SizedBox(height: r.isSmallPhone ? 2 : 4),
-                Flexible(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      color: Color(0xFF1e3c72),
-                      fontSize: r.isSmallPhone ? 10 : 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 2,
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: Color(0xFF1e3c72),
+                    fontSize: r.isSmallPhone ? 10 : 12,
+                    fontWeight: FontWeight.w500,
                   ),
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
                 ),
               ],
             ),
@@ -1743,7 +2169,7 @@ class _DashboardViewState extends State<DashboardView>
 
           // High usage bar chart
           Container(
-            height: r.isVeryShortScreen ? 180 : r.isShortScreen ? 200 : 220,
+            height: r.isVeryShortScreen ? 200 : r.isShortScreen ? 220 : 240,
             child: _buildHighUsageBarChart(r),
           ),
           SizedBox(height: r.mediumSpacing),
@@ -1813,7 +2239,9 @@ class _DashboardViewState extends State<DashboardView>
                 : 30.0;
     final dayFontSize = r.isVerySmallPhone ? 8.0 : r.isNarrow ? 9.0 : 10.0;
     final valueFontSize = r.isVerySmallPhone ? 7.0 : r.isNarrow ? 7.5 : 8.0;
-    final chartHeight = r.isVeryShortScreen ? 140.0 : 160.0;
+    // Reserve space for labels: day label (10px) + spacing (6px) + value label (8px) + spacing (2px) = ~26px
+    final labelSpace = 26.0;
+    final chartHeight = (r.isVeryShortScreen ? 140.0 : 160.0) - labelSpace;
 
     return Container(
       padding: EdgeInsets.symmetric(
@@ -1846,7 +2274,9 @@ class _DashboardViewState extends State<DashboardView>
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: chartData.map((data) {
                   final usage = (data['usage'] as num).toDouble();
-                  final height = maxUsage > 0 ? (usage / maxUsage) * chartHeight : 0.0;
+                  // Clamp height to ensure it fits within available space
+                  final calculatedHeight = maxUsage > 0 ? (usage / maxUsage) * chartHeight : 0.0;
+                  final height = calculatedHeight.clamp(0.0, chartHeight);
 
                   // Color based on usage level
                   Color barColor;
@@ -1862,47 +2292,69 @@ class _DashboardViewState extends State<DashboardView>
 
                   return Container(
                     margin: EdgeInsets.symmetric(horizontal: 4),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Container(
-                          width: minBarWidth,
-                          height: height,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.bottomCenter,
-                              end: Alignment.topCenter,
-                              colors: [
-                                barColor,
-                                barColor.withValues(alpha: 0.7),
-                              ],
+                    child: IntrinsicHeight(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          // Bar container with constrained height
+                          Flexible(
+                            flex: 1,
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxHeight: chartHeight,
+                                minHeight: 0,
+                              ),
+                              child: Container(
+                                width: minBarWidth,
+                                height: height,
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.bottomCenter,
+                                    end: Alignment.topCenter,
+                                    colors: [
+                                      barColor,
+                                      barColor.withValues(alpha: 0.7),
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
                             ),
-                            borderRadius: BorderRadius.circular(4),
                           ),
-                        ),
-                        SizedBox(height: 6),
-                        Text(
-                          data['day'],
-                          style: TextStyle(
-                            fontSize: dayFontSize,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF1e3c72),
+                          SizedBox(height: 4),
+                          // Labels with fixed height to prevent overflow
+                          SizedBox(
+                            height: dayFontSize + 2,
+                            child: Text(
+                              data['day'],
+                              style: TextStyle(
+                                fontSize: dayFontSize,
+                                fontWeight: FontWeight.w500,
+                                color: Color(0xFF1e3c72),
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                              textAlign: TextAlign.center,
+                            ),
                           ),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          "${usage.toStringAsFixed(2)}L",
-                          style: TextStyle(
-                            fontSize: valueFontSize,
-                            color: Color(0xFF1e3c72).withValues(alpha: 0.7),
+                          SizedBox(height: 2),
+                          SizedBox(
+                            height: valueFontSize + 2,
+                            child: Text(
+                              "${usage.toStringAsFixed(2)}L",
+                              style: TextStyle(
+                                fontSize: valueFontSize,
+                                color: Color(0xFF1e3c72).withValues(alpha: 0.7),
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                              textAlign: TextAlign.center,
+                            ),
                           ),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   );
                 }).toList(),
@@ -1916,7 +2368,9 @@ class _DashboardViewState extends State<DashboardView>
             crossAxisAlignment: CrossAxisAlignment.end,
             children: chartData.map((data) {
               final usage = (data['usage'] as num).toDouble();
-              final height = maxUsage > 0 ? (usage / maxUsage) * chartHeight : 0.0;
+              // Clamp height to ensure it fits within available space
+              final calculatedHeight = maxUsage > 0 ? (usage / maxUsage) * chartHeight : 0.0;
+              final height = calculatedHeight.clamp(0.0, chartHeight);
 
               // Color based on usage level
               Color barColor;
@@ -1931,49 +2385,69 @@ class _DashboardViewState extends State<DashboardView>
               }
 
               return Flexible(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Container(
-                      width: minBarWidth,
-                      height: height,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.bottomCenter,
-                          end: Alignment.topCenter,
-                          colors: [
-                            barColor,
-                            barColor.withValues(alpha: 0.7),
-                          ],
+                child: IntrinsicHeight(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // Bar container with constrained height
+                      Flexible(
+                        flex: 1,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxHeight: chartHeight,
+                            minHeight: 0,
+                          ),
+                          child: Container(
+                            width: minBarWidth,
+                            height: height,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.bottomCenter,
+                                end: Alignment.topCenter,
+                                colors: [
+                                  barColor,
+                                  barColor.withValues(alpha: 0.7),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
                         ),
-                        borderRadius: BorderRadius.circular(4),
                       ),
-                    ),
-                    SizedBox(height: 6),
-                    Text(
-                      data['day'],
-                      style: TextStyle(
-                        fontSize: dayFontSize,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF1e3c72),
+                      SizedBox(height: 4),
+                      // Labels with fixed height to prevent overflow
+                      SizedBox(
+                        height: dayFontSize + 2,
+                        child: Text(
+                          data['day'],
+                          style: TextStyle(
+                            fontSize: dayFontSize,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF1e3c72),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                          textAlign: TextAlign.center,
+                        ),
                       ),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                      textAlign: TextAlign.center,
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      "${usage.toStringAsFixed(2)}L",
-                      style: TextStyle(
-                        fontSize: valueFontSize,
-                        color: Color(0xFF1e3c72).withValues(alpha: 0.7),
+                      SizedBox(height: 2),
+                      SizedBox(
+                        height: valueFontSize + 2,
+                        child: Text(
+                          "${usage.toStringAsFixed(2)}L",
+                          style: TextStyle(
+                            fontSize: valueFontSize,
+                            color: Color(0xFF1e3c72).withValues(alpha: 0.7),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                          textAlign: TextAlign.center,
+                        ),
                       ),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               );
             }).toList(),
@@ -1986,7 +2460,10 @@ class _DashboardViewState extends State<DashboardView>
   Widget _buildHighUsageStat(
       String title, String value, Color color, Responsive r) {
     return Container(
-      padding: EdgeInsets.all(r.mediumSpacing),
+      padding: EdgeInsets.symmetric(
+        horizontal: r.smallSpacing,
+        vertical: r.smallSpacing,
+      ),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(r.cardRadius),
@@ -1994,34 +2471,39 @@ class _DashboardViewState extends State<DashboardView>
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
             color == Colors.red ? Icons.trending_up : Icons.analytics,
             color: color,
-            size: r.iconSize,
+            size: r.iconSize * 0.9,
           ),
-          SizedBox(height: r.smallSpacing),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: r.subtitleFontSize,
-              fontWeight: FontWeight.bold,
-              color: color,
+          SizedBox(height: r.smallSpacing * 0.5),
+          Flexible(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: r.subtitleFontSize * 0.9,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+              textAlign: TextAlign.center,
             ),
-            overflow: TextOverflow.ellipsis,
-            maxLines: 1,
-            textAlign: TextAlign.center,
           ),
-          SizedBox(height: 4),
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: r.smallFontSize,
-              color: Color(0xFF1e3c72).withValues(alpha: 0.7),
+          SizedBox(height: 2),
+          Flexible(
+            child: Text(
+              title,
+              style: TextStyle(
+                fontSize: r.smallFontSize * 0.9,
+                color: Color(0xFF1e3c72).withValues(alpha: 0.7),
+              ),
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
             ),
-            textAlign: TextAlign.center,
-            overflow: TextOverflow.ellipsis,
-            maxLines: 1,
           ),
         ],
       ),
@@ -2070,6 +2552,11 @@ class _DashboardViewState extends State<DashboardView>
             builder: (context, snapshot) {
               final data = snapshot.data ?? {};
               final loading = snapshot.connectionState == ConnectionState.waiting;
+              final error = snapshot.error;
+
+              if (error != null) {
+                print('❌ Water savings error: $error');
+              }
 
               if (loading) {
                 return Center(
@@ -2089,6 +2576,15 @@ class _DashboardViewState extends State<DashboardView>
               final savedLiters = (data['savedLiters'] as num?)?.toDouble() ?? 0.0;
               final savedPercent =
                   (data['savedPercent'] as num?)?.toDouble() ?? 0.0;
+              final success = data['success'] == true;
+
+              print('💧 Water Savings Data: success=$success, lastMonth=$lastMonth, thisMonth=$thisMonth, saved=$savedLiters, error=${data['error']}');
+              
+              if (!success && data['error'] != null) {
+                print('⚠️ Water savings failed: ${data['error']}');
+              }
+
+              print('💧 Water Savings Data: lastMonth=$lastMonth, thisMonth=$thisMonth, saved=$savedLiters');
 
               final isSaving = savedLiters > 0.0;
               final deltaAbs = savedLiters.abs();

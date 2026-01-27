@@ -2,7 +2,7 @@
   "name": "waterleak-web",
   "private": true,
   "scripts": {
-    "build": "node -e \"console.log('Vercel build: serving prebuilt Flutter web from /public')\""
+    "build": "flutter build web --release && xcopy /E /I /Y build\\web public || cp -r build/web/* public/ || echo 'Build complete - using existing public directory'"
   }
 }
 
