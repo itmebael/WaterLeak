@@ -545,36 +545,56 @@ class _HistoryViewState extends State<HistoryView>
     return LayoutBuilder(
       builder: (context, constraints) {
         final r = Responsive(context);
+
+        // Common stat cards
+        final cards = <Widget>[
+          _buildStatCard(
+            'Total Water Used',
+            '${totalWaterUsed.toStringAsFixed(6)} L',
+            Icons.water_drop,
+            Colors.blue,
+          ),
+          _buildStatCard(
+            'Leak Detections',
+            '$leakDetections',
+            Icons.warning,
+            Colors.red,
+          ),
+          _buildStatCard(
+            'Normal Usage',
+            '$normalUsage',
+            Icons.check_circle,
+            Colors.green,
+          ),
+        ];
+
+        // On narrow screens stack stats vertically, on wider screens use a row.
+        final bool isNarrow = constraints.maxWidth < 600;
+
+        if (isNarrow) {
+          return Container(
+            margin: EdgeInsets.all(r.mediumSpacing),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (int i = 0; i < cards.length; i++) ...[
+                  if (i > 0) SizedBox(height: r.smallSpacing),
+                  cards[i],
+                ],
+              ],
+            ),
+          );
+        }
+
         return Container(
           margin: EdgeInsets.all(r.mediumSpacing),
-          child: Wrap(
-            spacing: r.smallSpacing,
-            runSpacing: r.smallSpacing,
+          child: Row(
             children: [
-              Expanded(
-                child: _buildStatCard(
-                  'Total Water Used',
-                  '${totalWaterUsed.toStringAsFixed(6)} L',
-                  Icons.water_drop,
-                  Colors.blue,
-                ),
-              ),
-              Expanded(
-                child: _buildStatCard(
-                  'Leak Detections',
-                  '$leakDetections',
-                  Icons.warning,
-                  Colors.red,
-                ),
-              ),
-              Expanded(
-                child: _buildStatCard(
-                  'Normal Usage',
-                  '$normalUsage',
-                  Icons.check_circle,
-                  Colors.green,
-                ),
-              ),
+              Expanded(child: cards[0]),
+              SizedBox(width: r.smallSpacing),
+              Expanded(child: cards[1]),
+              SizedBox(width: r.smallSpacing),
+              Expanded(child: cards[2]),
             ],
           ),
         );
