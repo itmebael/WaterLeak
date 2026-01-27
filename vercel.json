@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "buildCommand": "",
-  "outputDirectory": "build/web",
+  "buildCommand": "npm run build",
+  "outputDirectory": "public",
   "framework": null,
   "routes": [
     { "handle": "filesystem" },
