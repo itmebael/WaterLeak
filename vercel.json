@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "buildCommand": "npm run build",
-  "outputDirectory": "public",
+  "buildCommand": "echo \"Using existing Flutter web build artifacts\"",
+  "outputDirectory": "build/web",
   "framework": null,
   "routes": [
     { "handle": "filesystem" },
