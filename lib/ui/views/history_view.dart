@@ -107,7 +107,7 @@ class _HistoryViewState extends State<HistoryView>
         if (selectedPropertyId == null) {
           // Fetch all leaks when no property is selected
           leaks = await _supabaseService.getAllLeakDetections();
-        } else {
+            } else {
           leaks = await _supabaseService.getLeakDetections(selectedPropertyId!);
           // If the property-filtered query returns nothing (e.g. leak rows have NULL property_id),
           // fall back to global leaks so History still shows the dashboard records.
@@ -116,7 +116,7 @@ class _HistoryViewState extends State<HistoryView>
           }
         }
         waterDataHistory = _mapLeakDetectionsToHistory(leaks);
-        _calculateStatistics();
+          _calculateStatistics();
       } catch (e) {
         print('Error loading leak detections: $e');
         waterDataHistory = [];
@@ -549,23 +549,23 @@ class _HistoryViewState extends State<HistoryView>
         // Common stat cards
         final cards = <Widget>[
           _buildStatCard(
-            'Total Water Used',
-            '${totalWaterUsed.toStringAsFixed(6)} L',
-            Icons.water_drop,
-            Colors.blue,
-          ),
+                  'Total Water Used',
+                  '${totalWaterUsed.toStringAsFixed(6)} L',
+                  Icons.water_drop,
+                  Colors.blue,
+                ),
           _buildStatCard(
-            'Leak Detections',
-            '$leakDetections',
-            Icons.warning,
-            Colors.red,
-          ),
+                  'Leak Detections',
+                  '$leakDetections',
+                  Icons.warning,
+                  Colors.red,
+                ),
           _buildStatCard(
-            'Normal Usage',
-            '$normalUsage',
-            Icons.check_circle,
-            Colors.green,
-          ),
+                  'Normal Usage',
+                  '$normalUsage',
+                  Icons.check_circle,
+                  Colors.green,
+                ),
         ];
 
         // On narrow screens stack stats vertically, on wider screens use a row.

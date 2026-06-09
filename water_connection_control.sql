@@ -5,24 +5,34 @@ BEGIN;
 
 -- 1. WATER_CONNECTION_CONTROL TABLE (Main control table for ESP devices)
 CREATE TABLE IF NOT EXISTS public.water_connection_control (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  device_id VARCHAR(100) NOT NULL UNIQUE, -- ESP device identifier (e.g., "ESP_001", "ESP_002")
-  device_name TEXT NOT NULL, -- Human-readable name (e.g., "Main Line", "Kitchen Line")
-  valve_status TEXT NOT NULL DEFAULT 'closed', -- 'open' or 'closed'
-  water_flow DECIMAL(10, 2) DEFAULT 0.00, -- Current flow rate in L/min
-  pressure DECIMAL(5, 2) DEFAULT 0.00, -- Water pressure in PSI (optional)
-  temperature DECIMAL(4, 2) DEFAULT 0.00, -- Water temperature in Celsius (optional)
-  is_online BOOLEAN DEFAULT false, -- Device connection status
-  last_heartbeat TIMESTAMP WITH TIME ZONE DEFAULT NOW(), -- Last communication from device
-  location TEXT, -- Physical location of the device
-  user_id UUID REFERENCES users(id) ON DELETE SET NULL, -- Optional: link to user
-  property_id UUID REFERENCES properties(id) ON DELETE SET NULL, -- Optional: link to property
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  CONSTRAINT water_connection_control_valve_status_check CHECK (
-    valve_status = ANY (ARRAY['open'::text, 'closed'::text])
-  )
-);
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    device_id character varying(100) NOT NULL,
+    device_name text NOT NULL,
+    valve_status text NOT NULL DEFAULT 'closed'::text,
+    water_flow numeric(10, 2) NULL DEFAULT 0.00,
+    pressure numeric(5, 2) NULL DEFAULT 0.00,
+    temperature numeric(4, 2) NULL DEFAULT 0.00,
+    is_online boolean NULL DEFAULT false,
+    last_heartbeat timestamp with time zone NULL DEFAULT now(),
+    location text NULL,
+    user_id uuid NULL,
+    property_id uuid NULL,
+    created_at timestamp with time zone NULL DEFAULT now(),
+    updated_at timestamp with time zone NULL DEFAULT now(),
+    total_water_used numeric(10, 2) NULL DEFAULT 0.00,
+    sensor_data jsonb NULL DEFAULT '{}'::jsonb,
+    CONSTRAINT water_connection_control_pkey PRIMARY KEY (id),
+    CONSTRAINT water_connection_control_device_id_key UNIQUE (device_id),
+    CONSTRAINT water_connection_control_property_id_fkey FOREIGN KEY (property_id) REFERENCES properties (id) ON DELETE SET NULL,
+    CONSTRAINT water_connection_control_user_id_fkey FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL,
+    CONSTRAINT water_connection_control_valve_status_check CHECK (valve_status = ANY (ARRAY['open'::text, 'closed'::text]))
+) TABLESPACE pg_default;
+
+-- Create indexes
+CREATE INDEX IF NOT EXISTS idx_water_control_device_id ON public.water_connection_control USING btree (device_id);
+CREATE INDEX IF NOT EXISTS idx_water_control_location ON public.water_connection_control USING btree (location);
+CREATE INDEX IF NOT EXISTS idx_water_control_is_online ON public.water_connection_control USING btree (is_online);
+CREATE INDEX IF NOT EXISTS idx_water_control_sensor_data ON public.water_connection_control USING gin (sensor_data);
 
 -- 2. WATER_CONNECTION_COMMANDS TABLE (Command queue for ESP devices)
 CREATE TABLE IF NOT EXISTS public.water_connection_commands (
@@ -53,9 +63,7 @@ CREATE TABLE IF NOT EXISTS public.water_connection_logs (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create indexes for better performance
-CREATE INDEX IF NOT EXISTS idx_water_connection_control_device_id ON water_connection_control(device_id);
-CREATE INDEX IF NOT EXISTS idx_water_connection_control_user_id ON water_connection_control(user_id);
+-- Create indexes for commands and logs
 CREATE INDEX IF NOT EXISTS idx_water_connection_commands_device_id ON water_connection_commands(device_id);
 CREATE INDEX IF NOT EXISTS idx_water_connection_commands_status ON water_connection_commands(status);
 CREATE INDEX IF NOT EXISTS idx_water_connection_logs_device_id ON water_connection_logs(device_id);
@@ -80,58 +88,35 @@ DROP POLICY IF EXISTS "Anyone can view water connection logs" ON water_connectio
 DROP POLICY IF EXISTS "Anyone can insert water connection logs" ON water_connection_logs;
 
 -- Create RLS policies for water_connection_control
-CREATE POLICY "Anyone can view water connection control" ON water_connection_control
-  FOR SELECT USING (true);
-
-CREATE POLICY "Anyone can insert water connection control" ON water_connection_control
-  FOR INSERT WITH CHECK (true);
-
-CREATE POLICY "Anyone can update water connection control" ON water_connection_control
-  FOR UPDATE USING (true);
-
-CREATE POLICY "Anyone can delete water connection control" ON water_connection_control
-  FOR DELETE USING (true);
+CREATE POLICY "Anyone can view water connection control" ON water_connection_control FOR SELECT USING (true);
+CREATE POLICY "Anyone can insert water connection control" ON water_connection_control FOR INSERT WITH CHECK (true);
+CREATE POLICY "Anyone can update water connection control" ON water_connection_control FOR UPDATE USING (true);
+CREATE POLICY "Anyone can delete water connection control" ON water_connection_control FOR DELETE USING (true);
 
 -- Create RLS policies for water_connection_commands
-CREATE POLICY "Anyone can view water connection commands" ON water_connection_commands
-  FOR SELECT USING (true);
-
-CREATE POLICY "Anyone can insert water connection commands" ON water_connection_commands
-  FOR INSERT WITH CHECK (true);
-
-CREATE POLICY "Anyone can update water connection commands" ON water_connection_commands
-  FOR UPDATE USING (true);
+CREATE POLICY "Anyone can view water connection commands" ON water_connection_commands FOR SELECT USING (true);
+CREATE POLICY "Anyone can insert water connection commands" ON water_connection_commands FOR INSERT WITH CHECK (true);
+CREATE POLICY "Anyone can update water connection commands" ON water_connection_commands FOR UPDATE USING (true);
 
 -- Create RLS policies for water_connection_logs
-CREATE POLICY "Anyone can view water connection logs" ON water_connection_logs
-  FOR SELECT USING (true);
+CREATE POLICY "Anyone can view water connection logs" ON water_connection_logs FOR SELECT USING (true);
+CREATE POLICY "Anyone can insert water connection logs" ON water_connection_logs FOR INSERT WITH CHECK (true);
 
-CREATE POLICY "Anyone can insert water connection logs" ON water_connection_logs
-  FOR INSERT WITH CHECK (true);
-
--- Create function to update updated_at timestamp
-CREATE OR REPLACE FUNCTION update_water_connection_control_updated_at()
+-- Create function to update updated_at timestamp (User requested alias)
+CREATE OR REPLACE FUNCTION update_water_control_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
+    NEW.updated_at = NOW();
+    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
 -- Create trigger for updated_at
-DROP TRIGGER IF EXISTS trigger_update_water_connection_control_updated_at ON water_connection_control;
-CREATE TRIGGER trigger_update_water_connection_control_updated_at
+DROP TRIGGER IF EXISTS trigger_update_water_control_updated_at ON water_connection_control;
+CREATE TRIGGER trigger_update_water_control_updated_at
   BEFORE UPDATE ON water_connection_control
   FOR EACH ROW
-  EXECUTE FUNCTION update_water_connection_control_updated_at();
-
--- Insert default device entries (optional - adjust device_id to match your ESP devices)
-INSERT INTO public.water_connection_control (device_id, device_name, valve_status, location, is_online)
-VALUES 
-  ('ESP_001', 'Main Water Line', 'closed', 'Main Entry', false),
-  ('ESP_002', 'Kitchen Line', 'closed', 'Kitchen', false),
-  ('ESP_003', 'Bathroom Line', 'closed', 'Bathroom', false)
-ON CONFLICT (device_id) DO NOTHING;
+  EXECUTE FUNCTION update_water_control_updated_at();
 
 -- Grant necessary permissions
 GRANT ALL ON public.water_connection_control TO authenticated;
@@ -142,15 +127,5 @@ GRANT ALL ON public.water_connection_logs TO authenticated;
 GRANT ALL ON public.water_connection_logs TO anon;
 
 COMMIT;
-
--- Usage Notes:
--- 1. ESP devices should poll water_connection_commands table for pending commands
--- 2. ESP devices should update water_connection_control table with current status
--- 3. ESP devices should insert logs into water_connection_logs for events
--- 4. Device heartbeat: Update last_heartbeat and is_online in water_connection_control
--- 5. To send a command: INSERT into water_connection_commands with status='pending'
--- 6. ESP device should UPDATE command status to 'executed' or 'failed' after processing
-
-
 
 

@@ -1,7 +1,7 @@
- import 'package:supabase_flutter/supabase_flutter.dart';
- import 'package:shared_preferences/shared_preferences.dart';
- import 'dart:convert';
- import '../config/supabase_config.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+import '../config/supabase_config.dart';
 
 class AuthService {
   static final AuthService _instance = AuthService._internal();
@@ -24,6 +24,8 @@ class AuthService {
     _currentUser = {
       'id': 'hardcoded_admin',
       'email': email,
+      'role': 'admin',
+      'is_hardcoded_admin': true,
     };
     await _persistSession();
   }
@@ -202,12 +204,18 @@ class AuthService {
         _sessionToken = response['session_token'];
         print('🔑 Session token set: $_sessionToken');
 
-        // Create user data immediately (don't wait for validation)
-        _currentUser = {
-          'id': response['user_id'],
-          'email': email,
-        };
-        print('✅ User data set immediately: $_currentUser');
+        // Validate session and load the full user profile, including role
+        final validationResult = await validateSession();
+        if (validationResult['success'] == true && validationResult['user'] != null) {
+          _currentUser = Map<String, dynamic>.from(validationResult['user']);
+        } else {
+          _currentUser = {
+            'id': response['user_id'],
+            'email': email,
+          };
+        }
+
+        print('✅ User data after validation: $_currentUser');
         await _persistSession();
 
         print(

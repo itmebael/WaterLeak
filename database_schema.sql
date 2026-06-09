@@ -295,6 +295,10 @@ CREATE INDEX idx_water_data_timestamp ON water_data(created_at);
 CREATE INDEX idx_water_consumption_monthly_property_year_month ON water_consumption_monthly(property_id, year, month);
 CREATE INDEX idx_water_leak_detections_property_date ON water_leak_detections(property_id, detection_date);
 CREATE INDEX idx_water_leak_detections_status ON water_leak_detections(status);
+CREATE INDEX IF NOT EXISTS idx_leak_detections_property_id ON public.water_leak_detections USING btree (property_id) TABLESPACE pg_default;
+CREATE INDEX IF NOT EXISTS idx_leak_detections_segment_id ON public.water_leak_detections USING btree (segment_id) TABLESPACE pg_default;
+CREATE INDEX IF NOT EXISTS idx_leak_detections_status ON public.water_leak_detections USING btree (status) TABLESPACE pg_default;
+CREATE INDEX IF NOT EXISTS idx_leak_detections_location ON public.water_leak_detections USING btree (location_description) TABLESPACE pg_default;
 CREATE INDEX idx_leak_notifications_user_id ON leak_notifications(user_id);
 CREATE INDEX idx_sensor_readings_segment_timestamp ON sensor_readings(segment_id, reading_timestamp);
 CREATE INDEX idx_emergency_contacts_user_id ON emergency_contacts(user_id);
@@ -316,6 +320,14 @@ CREATE TRIGGER update_water_consumption_daily_updated_at BEFORE UPDATE ON water_
 CREATE TRIGGER update_water_consumption_weekly_updated_at BEFORE UPDATE ON water_consumption_weekly FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_water_consumption_monthly_updated_at BEFORE UPDATE ON water_consumption_monthly FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_water_leak_detections_updated_at BEFORE UPDATE ON water_leak_detections FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Water sensor alert trigger
+CREATE TRIGGER trigger_water_sensor_alert
+AFTER INSERT ON water_leak_detections FOR EACH ROW WHEN (
+  NEW.leak_type::text = 'water_sensor'::text
+  AND NEW.status::text = 'active'::text
+)
+EXECUTE FUNCTION log_water_sensor_alert();
 CREATE TRIGGER update_water_switch_controls_updated_at BEFORE UPDATE ON water_switch_controls FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_emergency_contacts_updated_at BEFORE UPDATE ON emergency_contacts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_system_settings_updated_at BEFORE UPDATE ON system_settings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

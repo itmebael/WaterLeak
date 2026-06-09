@@ -231,16 +231,17 @@ class _AdminViewState extends State<AdminView> with TickerProviderStateMixin {
                         Navigator.of(context).pop();
                         try {
                           await _authService.signOut();
-                          if (mounted) {
-                            Navigator.of(context).pushNamedAndRemoveUntil(
-                              '/',
-                              (route) => false,
-                            );
-                          }
                         } catch (e) {
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(content: Text('Error during logout: $e')),
+                            );
+                          }
+                        } finally {
+                          if (mounted) {
+                            Navigator.of(context).pushNamedAndRemoveUntil(
+                              '/login',
+                              (route) => false,
                             );
                           }
                         }
@@ -322,14 +323,14 @@ class _AdminViewState extends State<AdminView> with TickerProviderStateMixin {
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: _glass(
                   radius: 26,
-                  padding: EdgeInsets.only(
+                padding: EdgeInsets.only(
                     top: MediaQuery.of(context).padding.top + 10,
                     left: 12,
                     right: 12,
                     bottom: 12,
-                  ),
-                  child: Row(
-                    children: [
+                ),
+                child: Row(
+                  children: [
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -390,22 +391,22 @@ class _AdminViewState extends State<AdminView> with TickerProviderStateMixin {
                         const SizedBox(width: 10),
                         _glass(
                           radius: 16,
-                          child: IconButton(
+                      child: IconButton(
                             icon: const Icon(Icons.add, color: Colors.white, size: 20),
-                            onPressed: () {
-                              if (_tabController.index == 3) {
-                                _showAddUserDialog();
-                              } else if (_tabController.index == 4) {
-                                _showAddContactDialog('plumber');
-                              } else if (_tabController.index == 1) {
-                                _showAddAnnouncementDialog();
-                              }
-                            },
+                        onPressed: () {
+                          if (_tabController.index == 3) {
+                            _showAddUserDialog();
+                          } else if (_tabController.index == 4) {
+                            _showAddContactDialog('plumber');
+                          } else if (_tabController.index == 1) {
+                            _showAddAnnouncementDialog();
+                          }
+                        },
                             padding: const EdgeInsets.all(10),
-                            tooltip: 'Add',
-                          ),
-                        ),
-                      ],
+                        tooltip: 'Add',
+                      ),
+                    ),
+                  ],
                     ),
                     ],
                   ),
@@ -483,23 +484,23 @@ class _AdminViewState extends State<AdminView> with TickerProviderStateMixin {
           padding: EdgeInsets.symmetric(horizontal: r.isPhone ? 0 : 6),
           child: _glass(
             radius: r.cardRadius,
-            padding: EdgeInsets.all(r.smallSpacing),
-            child: TextField(
-              controller: _searchController,
+      padding: EdgeInsets.all(r.smallSpacing),
+      child: TextField(
+        controller: _searchController,
               style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                hintText: 'Search devices...',
-                hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+        decoration: InputDecoration(
+          hintText: 'Search devices...',
+          hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
                 prefixIcon: const Icon(Icons.search, color: Colors.white),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
+          suffixIcon: _searchQuery.isNotEmpty
+              ? IconButton(
                         icon: const Icon(Icons.clear, color: Colors.white),
-                        onPressed: () {
-                          _searchController.clear();
-                        },
-                      )
-                    : null,
-                border: InputBorder.none,
+                  onPressed: () {
+                    _searchController.clear();
+                  },
+                )
+              : null,
+          border: InputBorder.none,
               ),
             ),
           ),
@@ -837,8 +838,8 @@ class _AdminViewState extends State<AdminView> with TickerProviderStateMixin {
       width: r.isSmallPhone ? (r.w - 40) / 2 : (r.w - 80) / 3,
       child: _glass(
         radius: r.cardRadius,
-        padding: EdgeInsets.all(r.mediumSpacing),
-        child: Column(
+      padding: EdgeInsets.all(r.mediumSpacing),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
@@ -976,8 +977,8 @@ class _AdminViewState extends State<AdminView> with TickerProviderStateMixin {
       margin: EdgeInsets.only(bottom: r.smallSpacing),
       child: _glass(
         radius: r.cardRadius,
-        padding: EdgeInsets.all(r.mediumSpacing),
-        child: Row(
+      padding: EdgeInsets.all(r.mediumSpacing),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
@@ -1324,7 +1325,7 @@ class _AdminViewState extends State<AdminView> with TickerProviderStateMixin {
             padding: EdgeInsets.all(r.mediumSpacing),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+        children: [
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -1619,55 +1620,55 @@ class _AdminViewState extends State<AdminView> with TickerProviderStateMixin {
       padding: EdgeInsets.only(bottom: r.smallSpacing),
       child: InkWell(
         onTap: () => _showUserDetailsDialog(user),
-        borderRadius: BorderRadius.circular(r.cardRadius),
+          borderRadius: BorderRadius.circular(r.cardRadius),
         child: _glass(
           radius: r.cardRadius,
           padding: EdgeInsets.all(r.mediumSpacing),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
                       fullName.isEmpty ? 'Unnamed User' : fullName,
-                      style: TextStyle(
-                        fontSize: r.isSmallPhone ? 16 : 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: r.isSmallPhone ? 16 : 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
                     ),
-                    SizedBox(height: r.isSmallPhone ? 2 : 4),
-                    Text(
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: r.isSmallPhone ? 2 : 4),
+                  Text(
                       (user['email'] ?? '').toString(),
+                    style: TextStyle(
+                      fontSize: r.isSmallPhone ? 12 : 14,
+                      color: Colors.white.withValues(alpha: 0.7),
+                    ),
+                  ),
+                    if ((user['phone'] ?? '').toString().isNotEmpty)
+                    Text(
+                        (user['phone'] ?? '').toString(),
                       style: TextStyle(
                         fontSize: r.isSmallPhone ? 12 : 14,
-                        color: Colors.white.withValues(alpha: 0.7),
+                        color: Colors.white.withValues(alpha: 0.5),
                       ),
                     ),
-                    if ((user['phone'] ?? '').toString().isNotEmpty)
-                      Text(
-                        (user['phone'] ?? '').toString(),
-                        style: TextStyle(
-                          fontSize: r.isSmallPhone ? 12 : 14,
-                          color: Colors.white.withValues(alpha: 0.5),
-                        ),
-                      ),
-                  ],
-                ),
+                ],
               ),
-              IconButton(
+            ),
+            IconButton(
                 icon: Icon(Icons.edit, color: Colors.white, size: 22),
-                onPressed: () => _showEditUserDialog(user),
-                tooltip: 'Edit User',
-              ),
-              IconButton(
-                icon: Icon(Icons.delete, color: Colors.red[300], size: 22),
-                onPressed: () => _showDeleteUserDialog(user),
-                tooltip: 'Delete User',
-              ),
-            ],
+              onPressed: () => _showEditUserDialog(user),
+              tooltip: 'Edit User',
+            ),
+            IconButton(
+              icon: Icon(Icons.delete, color: Colors.red[300], size: 22),
+              onPressed: () => _showDeleteUserDialog(user),
+              tooltip: 'Delete User',
+            ),
+          ],
           ),
         ),
       ),

@@ -30,7 +30,7 @@ dependencies:
   # Supabase dependencies
   supabase_flutter: ^2.3.4
   postgres: ^3.5.6
-  
+
   # File sharing and CSV
   share_plus: ^7.2.1
   csv: ^5.0.2

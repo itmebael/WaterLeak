@@ -1,9 +1,19 @@
 class SupabaseConfig {
-  static const String supabaseUrl = 'https://ituksombwexvutmxcmsv.supabase.co';
-  // Read from --dart-define=SUPABASE_KEY=... with a safe fallback to the current key
-  static const String supabaseAnonKey = String.fromEnvironment(
-    'SUPABASE_KEY',
-    defaultValue:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml0dWtzb21id2V4dnV0bXhjbXN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYzNDIzMjQsImV4cCI6MjA3MTkxODMyNH0.yLAlqs58A7wA__GsKKtZRh7T_WI-AI2UkjPl_SDlbzA',
+  static const String _legacySupabaseUrl =
+      String.fromEnvironment('SUPABASE_URL', defaultValue: '');
+  static const String _nextPublicSupabaseUrl = String.fromEnvironment(
+    'NEXT_PUBLIC_SUPABASE_URL',
+    defaultValue: 'https://pcddnhsvxjnwwmwchujk.supabase.co',
   );
+  static const String supabaseUrl =
+      _legacySupabaseUrl == '' ? _nextPublicSupabaseUrl : _legacySupabaseUrl;
+
+  static const String _legacySupabaseKey =
+      String.fromEnvironment('SUPABASE_KEY', defaultValue: '');
+  static const String _nextPublicSupabaseKey = String.fromEnvironment(
+    'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
+    defaultValue: 'sb_publishable_FUK89NzP96SBBnOsgbIeZg_yX0Conps',
+  );
+  static const String supabaseAnonKey =
+      _legacySupabaseKey == '' ? _nextPublicSupabaseKey : _legacySupabaseKey;
 }

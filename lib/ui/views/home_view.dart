@@ -143,8 +143,8 @@ class _HomeViewState extends State<HomeView> with TickerProviderStateMixin {
                             (base * 2).clamp(120.0, r.w * 0.65).toDouble();
 
                         return Image.asset(
-                          'assets/images/logo.png',
-                          fit: BoxFit.contain,
+                        'assets/images/logo.png',
+                        fit: BoxFit.contain,
                           width: logoSize,
                           height: logoSize,
                         );
@@ -197,7 +197,7 @@ class _HomeViewState extends State<HomeView> with TickerProviderStateMixin {
                               color: Colors.black.withValues(alpha: 0.2),
                               blurRadius: 20,
                               offset: Offset(0, 8),
-                            ),
+                          ),
                           ],
                         ),
                         child: Text(

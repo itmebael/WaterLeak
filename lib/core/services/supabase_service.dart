@@ -6,6 +6,8 @@ class SupabaseService {
   factory SupabaseService() => _instance;
   SupabaseService._internal();
 
+  static const String _hardcodedAdminId = 'hardcoded_admin';
+
   // Always read the client from Supabase singleton to avoid late init errors
   SupabaseClient get _client => Supabase.instance.client;
   final AuthService _authService = AuthService();
@@ -96,6 +98,48 @@ class SupabaseService {
         });
       }
 
+      // Create sample water connection control device with water usage data
+      await _client.from('water_connection_control').upsert({
+        'device_id': 'ESP_KITCHEN_001',
+        'device_name': 'Kitchen Water Controller',
+        'valve_status': 'open',
+        'water_flow': 2.5,
+        'pressure': 45.2,
+        'temperature': 22.5,
+        'is_online': true,
+        'last_heartbeat': DateTime.now().toIso8601String(),
+        'location': 'Kitchen',
+        'user_id': userId,
+        'property_id': property['id'],
+        'total_water_used': 1250.75,
+        'sensor_data': {
+          'water_sensor_1_percent': '12.5',
+          'water_sensor_2_percent': '8.2',
+          'water_sensor_1_detected': false,
+          'water_sensor_2_detected': false,
+          'water_leak_detected': false,
+          'detection_method': 'water_sensor'
+        }
+      }, onConflict: 'device_id');
+
+      // Create sample water control history records for the device
+      final now = DateTime.now();
+      for (int i = 0; i < 30; i++) {
+        final timestamp = now.subtract(Duration(hours: i * 2));
+        await _client.from('water_control_history').insert({
+          'device_id': 'ESP_KITCHEN_001',
+          'timestamp': timestamp.toIso8601String(),
+          'water_flow': 1.5 + (i % 3).toDouble(),
+          'pressure': 40.0 + (i % 5).toDouble(),
+          'temperature': 20.0 + (i % 2).toDouble(),
+          'valve_status': i % 4 == 0 ? 'closed' : 'open',
+          'is_online': true,
+          'total_water_used': 1000.0 + (i * 25.0),
+          'property_id': property['id'],
+          'user_id': userId
+        });
+      }
+
       print('✅ Sample data created successfully');
     } catch (e) {
       print('❌ Failed to create sample data: $e');
@@ -105,7 +149,10 @@ class SupabaseService {
   SupabaseClient get client => Supabase.instance.client;
 
   // Get current user ID from AuthService
-  String? get currentUserId => _authService.currentUser?['id'];
+  String? get currentUserId {
+    final id = _authService.currentUser?['id'];
+    return id == _hardcodedAdminId ? null : id;
+  }
 
   // Leak heuristics (used when only flow snapshots are available)
   static const double _leakThresholdLpm = 0.2;
@@ -507,7 +554,7 @@ class SupabaseService {
                 });
               }
 
-              // Calculate consumption: last - first for each device
+              // Calculate consumption using sum of positive daily changes to handle counter resets
               for (final entry in byDevice.entries) {
                 final did = entry.key;
                 final records = entry.value;
@@ -518,22 +565,38 @@ class SupabaseService {
                   continue;
                 }
 
-                final first = records.first;
-                final last = records.last;
-                final firstUsed =
-                    (first['total_water_used'] as num?)?.toDouble() ?? 0.0;
-                final lastUsed =
-                    (last['total_water_used'] as num?)?.toDouble() ?? 0.0;
-                final delta = lastUsed - firstUsed;
+                double deviceTotal = 0.0;
+                double lastValidValue =
+                    (records.first['total_water_used'] as num?)?.toDouble() ??
+                        0.0;
 
-                if (delta > 0) {
-                  total += delta;
+                // Process each record and sum only positive changes (handle counter resets)
+                for (int i = 1; i < records.length; i++) {
+                  final current = records[i];
+                  final currentUsed =
+                      (current['total_water_used'] as num?)?.toDouble() ?? 0.0;
+                  final delta = currentUsed - lastValidValue;
+
+                  if (delta > 0) {
+                    // Normal case: water usage increased
+                    deviceTotal += delta;
+                    lastValidValue = currentUsed;
+                  } else if (delta < 0 && currentUsed >= 0) {
+                    // Counter reset: device was reset, start counting from new value
+                    print(
+                        '🔄 Device $did: Counter reset detected (${lastValidValue.toStringAsFixed(2)} → ${currentUsed.toStringAsFixed(2)}), continuing from new value');
+                    lastValidValue = currentUsed;
+                  }
+                  // If delta is 0 or negative but currentUsed is invalid, keep lastValidValue
+                }
+
+                if (deviceTotal > 0) {
+                  total += deviceTotal;
                   print(
-                      '💧 Device $did: ${delta.toStringAsFixed(2)} L (${firstUsed.toStringAsFixed(2)} → ${lastUsed.toStringAsFixed(2)})');
-                } else if (delta < 0) {
-                  // Handle case where total_water_used decreased (unlikely but possible)
+                      '💧 Device $did: ${deviceTotal.toStringAsFixed(2)} L (sum of positive changes)');
+                } else {
                   print(
-                      '⚠️ Device $did: Negative delta ${delta.toStringAsFixed(2)} L (counter reset?)');
+                      '⚠️ Device $did: No positive consumption changes found');
                 }
               }
 
@@ -1041,10 +1104,20 @@ class SupabaseService {
   // Water Leak Detections
   Future<List<Map<String, dynamic>>> getLeakDetections(String propertyId,
       {String? status}) async {
-    var query = _client
-        .from('water_leak_detections')
-        .select()
-        .eq('property_id', propertyId);
+    var query = _client.from('water_leak_detections').select('''
+          id,
+          property_id,
+          segment_id,
+          detection_date,
+          leak_type,
+          severity,
+          status,
+          location_description,
+          sensor_data,
+          confidence_score,
+          created_at,
+          updated_at
+        ''').eq('property_id', propertyId);
 
     if (status != null) {
       query = query.eq('status', status);
@@ -1056,11 +1129,20 @@ class SupabaseService {
 
   Future<Map<String, dynamic>?> getLeakDetectionById(String leakId) async {
     try {
-      final response = await _client
-          .from('water_leak_detections')
-          .select()
-          .eq('id', leakId)
-          .maybeSingle();
+      final response = await _client.from('water_leak_detections').select('''
+            id,
+            property_id,
+            segment_id,
+            detection_date,
+            leak_type,
+            severity,
+            status,
+            location_description,
+            sensor_data,
+            confidence_score,
+            created_at,
+            updated_at
+          ''').eq('id', leakId).maybeSingle();
       return response;
     } catch (e) {
       print('Error getting leak detection by ID: $e');
@@ -1228,7 +1310,20 @@ class SupabaseService {
     String? status,
   }) async {
     try {
-      var query = _client.from('water_leak_detections').select();
+      var query = _client.from('water_leak_detections').select('''
+        id,
+        property_id,
+        segment_id,
+        detection_date,
+        leak_type,
+        severity,
+        status,
+        location_description,
+        sensor_data,
+        confidence_score,
+        created_at,
+        updated_at
+      ''');
 
       // Fetch all first, then filter by status in Dart (handles case-insensitive)
       final response =
@@ -1380,7 +1475,10 @@ class SupabaseService {
   Future<Map<String, dynamic>> createAnnouncement(
       Map<String, dynamic> announcementData) async {
     final userId = _client.auth.currentUser?.id ?? currentUserId;
-    if (userId != null && announcementData['created_by'] == null) {
+    final createdBy = announcementData['created_by'];
+    if (createdBy == _hardcodedAdminId) {
+      announcementData['created_by'] = null;
+    } else if (announcementData['created_by'] == null && userId != null) {
       announcementData['created_by'] = userId;
     }
     announcementData['is_active'] = announcementData['is_active'] ?? true;
@@ -2379,30 +2477,13 @@ class SupabaseService {
 
   Future<bool> isCurrentUserAdmin() async {
     try {
-      final email = (_authService.currentUser?['email'] ??
-              _client.auth.currentUser?.email)
-          ?.toString()
-          .toLowerCase();
-      if (email == null) return false;
-      try {
-        final row = await _client
-            .from('users')
-            .select('role')
-            .eq('email', email)
-            .maybeSingle();
-        final role = row?['role']?.toString().toLowerCase();
-        if (role == 'admin') return true;
-      } catch (e) {}
-
-      const allowed = {
-        'admin@waterleak.com',
-        'admin@localhost',
-        'admin@example.com',
-      };
-      if (allowed.contains(email)) {
-        return true;
-      }
-      return false;
+      final currentUser = _authService.currentUser;
+      if (currentUser == null) return false;
+      final isAdminRole =
+          currentUser['role']?.toString().toLowerCase() == 'admin';
+      final isHardcodedAdmin = currentUser['id'] == _hardcodedAdminId &&
+          currentUser['is_hardcoded_admin'] == true;
+      return isAdminRole || isHardcodedAdmin;
     } catch (e) {
       return false;
     }

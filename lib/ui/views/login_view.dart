@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:waterleak/core/services/supabase_service.dart';
 import 'package:waterleak/ui/widgets/wave_widget.dart';
 import 'package:waterleak/core/services/auth_service.dart';
@@ -282,8 +281,7 @@ class _LoginViewState extends State<LoginView> with TickerProviderStateMixin {
                         left: 0,
                         right: 0,
                         // Push the form lower on screen; still shift up when keyboard is open
-                        top: size.height *
-                            (keyboardOpen ? 0.22 : 0.42),
+                        top: size.height * (keyboardOpen ? 0.22 : 0.42),
                         bottom: 0,
                         child: SlideTransition(
                           position: _slideAnimation,
@@ -316,7 +314,8 @@ class _LoginViewState extends State<LoginView> with TickerProviderStateMixin {
                                 child: LayoutBuilder(
                                   builder: (context, constraints) {
                                     // Center the form fields within the card on all screen sizes.
-                                    final maxFieldWidth = r.isDesktop ? 520.0 : 440.0;
+                                    final maxFieldWidth =
+                                        r.isDesktop ? 520.0 : 440.0;
                                     final fieldWidth = constraints.maxWidth
                                         .clamp(0.0, maxFieldWidth)
                                         .toDouble();
@@ -376,8 +375,8 @@ class _LoginViewState extends State<LoginView> with TickerProviderStateMixin {
                                                           RoundedRectangleBorder(
                                                         borderRadius:
                                                             BorderRadius
-                                                                .circular(
-                                                                    r.cardRadius),
+                                                                .circular(r
+                                                                    .cardRadius),
                                                       ),
                                                     ),
                                                   );
@@ -685,21 +684,6 @@ class _LoginViewState extends State<LoginView> with TickerProviderStateMixin {
 
       // 🔐 HARD-CODED ADMIN LOGIN (NO SUPABASE)
       if (email == 'admin@waterleak.com' && password == 'admin123') {
-        try {
-          await Supabase.instance.client.auth.signInWithPassword(
-            email: email,
-            password: password,
-          );
-        } catch (e) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Admin auth failed: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-          return;
-        }
-
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Admin login successful!'),

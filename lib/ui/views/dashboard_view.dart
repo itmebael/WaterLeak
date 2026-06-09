@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:waterleak/core/services/auth_service.dart';
 import 'package:waterleak/core/services/supabase_service.dart';
 import 'package:waterleak/ui/shared/responsive.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class DashboardView extends StatefulWidget {
   @override
@@ -118,6 +121,79 @@ class _DashboardViewState extends State<DashboardView>
 
     _startAnimations();
     _loadDashboardData();
+    _setupLeakSubscription();  // Listen for real-time leak updates
+  }
+
+  // Real-time subscription for leak detections
+  StreamSubscription? _leakSubscription;
+  
+  void _setupLeakSubscription() {
+    final supabase = Supabase.instance.client;
+    
+    // Subscribe to water_leak_detections table changes
+    _leakSubscription = supabase
+        .from('water_leak_detections')
+        .stream(primaryKey: ['id'])
+        .listen((data) {
+      print('🔔 Real-time leak update received: ${data.length} records');
+      
+      // Reload leaks when new ones are detected
+      if (mounted) {
+        _loadLeakAlerts();
+      }
+    });
+    
+    print('✅ Real-time leak subscription active');
+  }
+
+  // Separate method to reload leak alerts
+  Future<void> _loadLeakAlerts() async {
+    try {
+      // Fetch active leaks
+      var leaks = await _supabaseService.getAllLeakDetections(status: 'active');
+      
+      // If no active leaks, get all leaks
+      if (leaks.isEmpty) {
+        leaks = await _supabaseService.getAllLeakDetections();
+      }
+      
+      String _cap(String v) =>
+          v.isEmpty ? v : v[0].toUpperCase() + v.substring(1);
+      
+      final newLeakAlerts = leaks.map((l) {
+        final String severity =
+            (l['severity'] ?? 'low').toString().toLowerCase();
+        final Color color = severity == 'critical'
+            ? Colors.purple
+            : severity == 'high'
+                ? Colors.red
+                : severity == 'medium'
+                    ? Colors.orange
+                    : Colors.green;
+        final status = (l['status'] ?? 'active').toString().toLowerCase();
+        return {
+          'id': l['id'],
+          'location': l['location_description'] ?? 'Unknown location',
+          'description': (l['leak_type'] ?? 'leak').toString(),
+          'status': _cap(status),
+          'severity': _cap(severity),
+          'time': DateTime.tryParse(l['detection_date'] ?? '')
+                  ?.toLocal()
+                  .toString() ??
+              '',
+          'color': color,
+        };
+      }).toList();
+      
+      if (mounted) {
+        setState(() {
+          leakAlerts = newLeakAlerts;
+        });
+        print('✅ Updated leak alerts: ${leakAlerts.length} total (${leakAlerts.where((a) => a['status'].toString().toLowerCase() == 'active').length} active)');
+      }
+    } catch (e) {
+      print('❌ Error reloading leak alerts: $e');
+    }
   }
 
   Future<void> _loadDashboardData() async {
@@ -126,89 +202,8 @@ class _DashboardViewState extends State<DashboardView>
         isLoading = true;
       });
 
-      // Always load leaks, even if no property is selected
-      try {
-        // First try to get active leaks
-        var leaks = await _supabaseService.getAllLeakDetections(status: 'active');
-        
-        // If no active leaks found, try without status filter (get all)
-        if (leaks.isEmpty) {
-          print('⚠️ No active leaks found, fetching all leaks');
-          leaks = await _supabaseService.getAllLeakDetections();
-        }
-        
-        String _cap(String v) =>
-            v.isEmpty ? v : v[0].toUpperCase() + v.substring(1);
-        leakAlerts = leaks.map((l) {
-          final String severity =
-              (l['severity'] ?? 'low').toString().toLowerCase();
-          final Color color = severity == 'critical'
-              ? Colors.purple
-              : severity == 'high'
-                  ? Colors.red
-                  : severity == 'medium'
-                      ? Colors.orange
-                      : Colors.green;
-          final status = (l['status'] ?? 'active').toString().toLowerCase();
-          return {
-            'id': l['id'],
-            'location': l['location_description'] ?? 'Unknown location',
-            'description': (l['leak_type'] ?? 'leak').toString(),
-            'status': _cap(status),
-            'severity': _cap(severity),
-            'time': DateTime.tryParse(l['detection_date'] ?? '')
-                    ?.toLocal()
-                    .toString() ??
-                '',
-            'color': color,
-          };
-        }).toList();
-        print('✅ Loaded ${leakAlerts.length} leak alerts (${leakAlerts.where((a) => a['status'].toString().toLowerCase() == 'active').length} active)');
-        if (leakAlerts.isNotEmpty) {
-          print('📋 Leak alerts details:');
-          for (int i = 0; i < leakAlerts.length; i++) {
-            final alert = leakAlerts[i];
-            print('   ${i + 1}. ${alert['location']} - Status: ${alert['status']}, Severity: ${alert['severity']}');
-          }
-          // Force UI update
-          setState(() {});
-        } else {
-          print('⚠️ No leak alerts found - checking database...');
-          // Try to fetch all leaks without filter
-          final allLeaks = await _supabaseService.getAllLeakDetections();
-          print('📊 Total leaks in database: ${allLeaks.length}');
-          if (allLeaks.isNotEmpty) {
-            // Map and update if we found leaks
-            String _cap(String v) => v.isEmpty ? v : v[0].toUpperCase() + v.substring(1);
-            leakAlerts = allLeaks.map((l) {
-              final String severity = (l['severity'] ?? 'low').toString().toLowerCase();
-              final Color color = severity == 'critical'
-                  ? Colors.purple
-                  : severity == 'high'
-                      ? Colors.red
-                      : severity == 'medium'
-                          ? Colors.orange
-                          : Colors.green;
-              final status = (l['status'] ?? 'active').toString().toLowerCase();
-              return {
-                'id': l['id'],
-                'location': l['location_description'] ?? 'Unknown location',
-                'description': (l['leak_type'] ?? 'leak').toString(),
-                'status': _cap(status),
-                'severity': _cap(severity),
-                'time': DateTime.tryParse(l['detection_date'] ?? '')?.toLocal().toString() ?? '',
-                'color': color,
-              };
-            }).toList();
-            setState(() {});
-          }
-        }
-      } catch (e) {
-        print('❌ Error loading leak alerts: $e');
-        setState(() {
-          leakAlerts = [];
-        });
-      }
+      // Load leak alerts using the centralized method
+      await _loadLeakAlerts();
 
       // Ensure there is at least one property
       final ensured = await _ensureProperty();
@@ -253,9 +248,9 @@ class _DashboardViewState extends State<DashboardView>
 
           // Only update leakAlerts if we got results, otherwise keep existing ones
           if (leaks.isNotEmpty) {
-            String _cap(String v) =>
-                v.isEmpty ? v : v[0].toUpperCase() + v.substring(1);
-            leakAlerts = leaks.map((l) {
+          String _cap(String v) =>
+              v.isEmpty ? v : v[0].toUpperCase() + v.substring(1);
+          leakAlerts = leaks.map((l) {
             final String severity =
                 (l['severity'] ?? 'low').toString().toLowerCase();
             final Color color = severity == 'critical'
@@ -276,8 +271,9 @@ class _DashboardViewState extends State<DashboardView>
                       .toString() ??
                   '',
               'color': color,
+              'sensor_data': l['sensor_data'], // Add sensor data for display
             };
-            }).toList();
+          }).toList();
             print('📋 Updated leak alerts from property: ${leakAlerts.length}');
           } else {
             print('⚠️ No leaks found for property, keeping existing ${leakAlerts.length} alerts');
@@ -304,7 +300,7 @@ class _DashboardViewState extends State<DashboardView>
           monthlyConsumption = [];
           // Don't clear leakAlerts here - keep the ones loaded in _loadDashboardData
           if (leakAlerts.isEmpty) {
-            leakAlerts = [];
+          leakAlerts = [];
           }
           weeklyUsage = [];
           todayFlow = [];
@@ -338,6 +334,7 @@ class _DashboardViewState extends State<DashboardView>
                       .toString() ??
                   '',
               'color': color,
+              'sensor_data': l['sensor_data'], // Add sensor data for display
             };
           }).toList();
           
@@ -365,7 +362,7 @@ class _DashboardViewState extends State<DashboardView>
       monthlyConsumption = [];
       // Don't clear leakAlerts - keep the ones loaded in _loadDashboardData
       if (leakAlerts.isEmpty) {
-        leakAlerts = [];
+      leakAlerts = [];
       }
       weeklyUsage = [];
       todayFlow = [];
@@ -421,15 +418,15 @@ class _DashboardViewState extends State<DashboardView>
           (sum, d) => sum + ((d['water_flow'] as num?)?.toDouble() ?? 0.0),
         );
 
-        final List<Map<String, dynamic>> week = [];
-        for (int i = 6; i >= 0; i--) {
-          final d = now.subtract(Duration(days: i));
-          final label =
-              ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.weekday % 7];
+      final List<Map<String, dynamic>> week = [];
+      for (int i = 6; i >= 0; i--) {
+        final d = now.subtract(Duration(days: i));
+        final label =
+            ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.weekday % 7];
           final value = i == 0 ? totalUsed : 0.0;
           week.add({'day': label, 'usage': value, 'color': Colors.blue});
-        }
-        weeklyUsage = week;
+      }
+      weeklyUsage = week;
         todayFlow = [
           {'t': now, 'value': totalFlow}
         ];
@@ -611,6 +608,7 @@ class _DashboardViewState extends State<DashboardView>
 
   @override
   void dispose() {
+    _leakSubscription?.cancel();
     _backgroundController.dispose();
     _contentController.dispose();
     _navbarController.dispose();
@@ -667,9 +665,21 @@ class _DashboardViewState extends State<DashboardView>
               ),
             ),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.of(context).pop();
-                Navigator.pushReplacementNamed(context, '/');
+                try {
+                  await AuthService().signOut();
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error during logout: $e')),
+                  );
+                } finally {
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    '/login',
+                    (route) => false,
+                  );
+                }
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Color(0xFF1e3c72),
@@ -800,16 +810,16 @@ class _DashboardViewState extends State<DashboardView>
                             print('⚠️ WARNING: leakAlerts is empty in Builder!');
                           }
                           return ListView.builder(
-                            padding: EdgeInsets.symmetric(horizontal: r.mediumSpacing),
-                            itemCount: leakAlerts.length,
-                            itemBuilder: (context, index) {
-                              final alert = leakAlerts[index];
+                  padding: EdgeInsets.symmetric(horizontal: r.mediumSpacing),
+                  itemCount: leakAlerts.length,
+                  itemBuilder: (context, index) {
+                    final alert = leakAlerts[index];
                               print('🔔 Rendering leak alert ${index + 1}/${leakAlerts.length}: ${alert['location']} (status: ${alert['status']})');
-                              return _buildLeakAlertItem(alert, r);
+                    return _buildLeakAlertItem(alert, r);
                             },
                           );
-                        },
-                      ),
+                  },
+                ),
               ),
             ],
           ),
@@ -1024,24 +1034,24 @@ class _DashboardViewState extends State<DashboardView>
       onTap: () => _showLeakDetails(alert['id']),
       borderRadius: BorderRadius.circular(r.cardRadius),
       child: Container(
-        margin: EdgeInsets.only(bottom: r.mediumSpacing),
-        padding: EdgeInsets.all(r.mediumSpacing),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(r.cardRadius),
-          border: Border.all(
-            color: alert['color'].withValues(alpha: 0.3),
-            width: 2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black12,
-              blurRadius: 10,
-              offset: Offset(0, 5),
-            ),
-          ],
+      margin: EdgeInsets.only(bottom: r.mediumSpacing),
+      padding: EdgeInsets.all(r.mediumSpacing),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(r.cardRadius),
+        border: Border.all(
+          color: alert['color'].withValues(alpha: 0.3),
+          width: 2,
         ),
-        child: Column(
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 10,
+            offset: Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -1080,6 +1090,9 @@ class _DashboardViewState extends State<DashboardView>
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
+                    // Display sensor information if available
+                    if (alert['sensor_data'] != null && alert['sensor_data'] is Map)
+                      _buildSensorInfo(alert['sensor_data'], r),
                   ],
                 ),
               ),
@@ -1855,7 +1868,7 @@ class _DashboardViewState extends State<DashboardView>
                                     maxWidth: buttonWidth,
                                     minWidth: 0,
                                   ),
-                                  child: b,
+                                child: b,
                                 ),
                               ))
                           .toList(),
@@ -1893,71 +1906,71 @@ class _DashboardViewState extends State<DashboardView>
   Widget _buildActionButton(Responsive r, String title, IconData icon,
       [VoidCallback? onTap]) {
     final bool disabled = onTap == null;
-    Widget buttonContent = Container(
+        Widget buttonContent = Container(
       constraints: BoxConstraints(
         minWidth: 0,
         minHeight: r.isSmallPhone ? 60 : 70,
       ),
-      height: r.isSmallPhone ? 60 : 70,
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.95),
-        borderRadius: BorderRadius.circular(r.cardRadius),
-        border: Border.all(
-          color: Color(0xFF1e3c72).withValues(alpha: disabled ? 0.2 : 0.3),
-          width: 1.5,
-        ),
-      ),
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: r.isSmallPhone ? 8 : 12,
-          vertical: r.isSmallPhone ? 6 : 8,
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
+          height: r.isSmallPhone ? 60 : 70,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.95),
+            borderRadius: BorderRadius.circular(r.cardRadius),
+            border: Border.all(
+              color: Color(0xFF1e3c72).withValues(alpha: disabled ? 0.2 : 0.3),
+              width: 1.5,
+            ),
+          ),
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: r.isSmallPhone ? 8 : 12,
+              vertical: r.isSmallPhone ? 6 : 8,
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              color: Color(0xFF1e3c72),
-              size: r.isSmallPhone ? 20 : 24,
-            ),
-            SizedBox(height: r.isSmallPhone ? 2 : 4),
+              children: [
+                Icon(
+                  icon,
+                  color: Color(0xFF1e3c72),
+                  size: r.isSmallPhone ? 20 : 24,
+                ),
+                SizedBox(height: r.isSmallPhone ? 2 : 4),
             Text(
-              title,
-              style: TextStyle(
-                color: Color(0xFF1e3c72),
-                fontSize: r.isSmallPhone ? 10 : 12,
-                fontWeight: FontWeight.w500,
-              ),
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.ellipsis,
-              maxLines: 2,
+                    title,
+                    style: TextStyle(
+                      color: Color(0xFF1e3c72),
+                      fontSize: r.isSmallPhone ? 10 : 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
-    );
+          ),
+        );
 
-    if (disabled) {
-      return Opacity(
-        opacity: 0.5,
-        child: buttonContent,
-      );
-    }
+        if (disabled) {
+          return Opacity(
+            opacity: 0.5,
+            child: buttonContent,
+          );
+        }
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
+        return GestureDetector(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(r.cardRadius),
-          splashColor: Color(0xFF1e3c72).withValues(alpha: 0.1),
-          highlightColor: Color(0xFF1e3c72).withValues(alpha: 0.05),
-          child: buttonContent,
-        ),
-      ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(r.cardRadius),
+              splashColor: Color(0xFF1e3c72).withValues(alpha: 0.1),
+              highlightColor: Color(0xFF1e3c72).withValues(alpha: 0.05),
+              child: buttonContent,
+            ),
+          ),
     );
   }
 
@@ -2264,7 +2277,7 @@ class _DashboardViewState extends State<DashboardView>
             return SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               padding: EdgeInsets.symmetric(horizontal: 4),
-              child: Row(
+      child: Row(
                 mainAxisAlignment: MainAxisAlignment.start,
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: chartData.map((data) {
@@ -2359,33 +2372,33 @@ class _DashboardViewState extends State<DashboardView>
 
           // If bars fit, use flexible layout
           return Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: chartData.map((data) {
-              final usage = (data['usage'] as num).toDouble();
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: chartData.map((data) {
+          final usage = (data['usage'] as num).toDouble();
               // Clamp height to ensure it fits within available space
               final calculatedHeight = maxUsage > 0 ? (usage / maxUsage) * chartHeight : 0.0;
               final height = calculatedHeight.clamp(0.0, chartHeight);
 
-              // Color based on usage level
-              Color barColor;
-              if (usage > maxUsage * 0.8) {
-                barColor = Colors.red;
-              } else if (usage > maxUsage * 0.6) {
-                barColor = Colors.orange;
-              } else if (usage > maxUsage * 0.4) {
-                barColor = Colors.yellow;
-              } else {
-                barColor = Colors.green;
-              }
+          // Color based on usage level
+          Color barColor;
+          if (usage > maxUsage * 0.8) {
+            barColor = Colors.red;
+          } else if (usage > maxUsage * 0.6) {
+            barColor = Colors.orange;
+          } else if (usage > maxUsage * 0.4) {
+            barColor = Colors.yellow;
+          } else {
+            barColor = Colors.green;
+          }
 
               return Flexible(
                 child: IntrinsicHeight(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.end,
+            mainAxisAlignment: MainAxisAlignment.end,
                     crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
+            children: [
                       // Bar container with constrained height
                       Flexible(
                         flex: 1,
@@ -2396,19 +2409,19 @@ class _DashboardViewState extends State<DashboardView>
                           ),
                           child: Container(
                             width: minBarWidth,
-                            height: height,
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.bottomCenter,
-                                end: Alignment.topCenter,
-                                colors: [
-                                  barColor,
-                                  barColor.withValues(alpha: 0.7),
-                                ],
-                              ),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ),
+                height: height,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      barColor,
+                      barColor.withValues(alpha: 0.7),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
                         ),
                       ),
                       SizedBox(height: 4),
@@ -2416,12 +2429,12 @@ class _DashboardViewState extends State<DashboardView>
                       SizedBox(
                         height: dayFontSize + 2,
                         child: Text(
-                          data['day'],
-                          style: TextStyle(
+                data['day'],
+                style: TextStyle(
                             fontSize: dayFontSize,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF1e3c72),
-                          ),
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF1e3c72),
+                ),
                           overflow: TextOverflow.ellipsis,
                           maxLines: 1,
                           textAlign: TextAlign.center,
@@ -2432,20 +2445,20 @@ class _DashboardViewState extends State<DashboardView>
                         height: valueFontSize + 2,
                         child: Text(
                           "${usage.toStringAsFixed(2)}L",
-                          style: TextStyle(
+                style: TextStyle(
                             fontSize: valueFontSize,
-                            color: Color(0xFF1e3c72).withValues(alpha: 0.7),
+                  color: Color(0xFF1e3c72).withValues(alpha: 0.7),
                           ),
                           overflow: TextOverflow.ellipsis,
                           maxLines: 1,
                           textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ],
+                ),
+              ),
+            ],
                   ),
                 ),
-              );
-            }).toList(),
+          );
+        }).toList(),
           );
         },
       ),
@@ -2476,26 +2489,26 @@ class _DashboardViewState extends State<DashboardView>
           SizedBox(height: r.smallSpacing * 0.5),
           Flexible(
             child: Text(
-              value,
-              style: TextStyle(
+            value,
+            style: TextStyle(
                 fontSize: r.subtitleFontSize * 0.9,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
               overflow: TextOverflow.ellipsis,
               maxLines: 1,
               textAlign: TextAlign.center,
-            ),
+          ),
           ),
           SizedBox(height: 2),
           Flexible(
             child: Text(
-              title,
-              style: TextStyle(
+            title,
+            style: TextStyle(
                 fontSize: r.smallFontSize * 0.9,
-                color: Color(0xFF1e3c72).withValues(alpha: 0.7),
-              ),
-              textAlign: TextAlign.center,
+              color: Color(0xFF1e3c72).withValues(alpha: 0.7),
+            ),
+            textAlign: TextAlign.center,
               overflow: TextOverflow.ellipsis,
               maxLines: 1,
             ),
@@ -2589,22 +2602,22 @@ class _DashboardViewState extends State<DashboardView>
               final statusLabel = isSaving ? 'Saving' : 'Increased';
 
               return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Water Savings',
-                        style: TextStyle(
-                          fontSize: r.titleFontSize,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1e3c72),
-                          letterSpacing: 1.0,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      Container(
+            children: [
+              Text(
+                'Water Savings',
+                style: TextStyle(
+                  fontSize: r.titleFontSize,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1e3c72),
+                  letterSpacing: 1.0,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+                        Container(
                         padding: EdgeInsets.symmetric(
                           horizontal: r.smallSpacing,
                           vertical: 6,
@@ -2615,33 +2628,33 @@ class _DashboardViewState extends State<DashboardView>
                           border: Border.all(
                             color: statusColor.withValues(alpha: 0.45),
                             width: 1,
-                          ),
-                        ),
+                                  ),
+                                ),
                         child: Text(
                           statusLabel,
-                          style: TextStyle(
+                                      style: TextStyle(
                             color: statusColor,
                             fontWeight: FontWeight.w700,
                             fontSize: r.isSmallPhone ? 12 : 13,
                           ),
+                                      ),
+                                    ),
+                                  ],
                         ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: r.smallSpacing),
-                  Text(
+                        SizedBox(height: r.smallSpacing),
+                        Text(
                     isSaving
                         ? 'You saved ${deltaAbs.toStringAsFixed(2)} L (${deltaPctAbs.toStringAsFixed(1)}%) compared to last month.'
                         : 'You used ${deltaAbs.toStringAsFixed(2)} L (${deltaPctAbs.toStringAsFixed(1)}%) more than last month.',
-                    style: TextStyle(
+                          style: TextStyle(
                       color: Color(0xFF1e3c72).withValues(alpha: 0.85),
                       fontSize: r.isSmallPhone ? 12 : 14,
                     ),
                   ),
-                  SizedBox(height: r.mediumSpacing),
+                        SizedBox(height: r.mediumSpacing),
                   Row(
-                    children: [
-                      Expanded(
+                            children: [
+                              Expanded(
                         child: _buildSavingsMetric(
                           r: r,
                           label: 'Last Month',
@@ -2656,9 +2669,9 @@ class _DashboardViewState extends State<DashboardView>
                           label: 'This Month',
                           value: '${thisMonth.toStringAsFixed(2)} L',
                           icon: Icons.today,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
                   ),
                 ],
               );
@@ -2686,10 +2699,10 @@ class _DashboardViewState extends State<DashboardView>
         ),
       ),
       child: Row(
-        children: [
-          Container(
+      children: [
+        Container(
             padding: EdgeInsets.all(r.smallSpacing),
-            decoration: BoxDecoration(
+          decoration: BoxDecoration(
               color: Color(0xFF1e3c72).withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(r.cardRadius),
             ),
@@ -2697,30 +2710,30 @@ class _DashboardViewState extends State<DashboardView>
               icon,
               color: Color(0xFF1e3c72),
               size: r.isSmallPhone ? 18 : 20,
-            ),
           ),
-          SizedBox(width: r.smallSpacing),
-          Expanded(
+        ),
+        SizedBox(width: r.smallSpacing),
+        Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   label,
-                  style: TextStyle(
+            style: TextStyle(
                     fontSize: r.isSmallPhone ? 11 : 12,
-                    color: Color(0xFF1e3c72).withValues(alpha: 0.7),
-                  ),
-                ),
+              color: Color(0xFF1e3c72).withValues(alpha: 0.7),
+            ),
+          ),
                 SizedBox(height: 2),
-                Text(
-                  value,
-                  style: TextStyle(
+        Text(
+          value,
+          style: TextStyle(
                     fontSize: r.isSmallPhone ? 14 : 16,
                     fontWeight: FontWeight.w700,
                     color: Color(0xFF1e3c72),
-                  ),
-                ),
-              ],
+          ),
+        ),
+      ],
             ),
           ),
         ],
@@ -2799,4 +2812,48 @@ class _FlowLineChartPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+
+// Sensor information widget for leak alerts
+Widget _buildSensorInfo(Map<String, dynamic> sensorData, Responsive r) {
+  // Parse sensor percentages with proper numeric conversion
+  final sensor1Percent = double.tryParse(sensorData['water_sensor_1_percent']?.toString() ?? '0') ?? 0.0;
+  final sensor2Percent = double.tryParse(sensorData['water_sensor_2_percent']?.toString() ?? '0') ?? 0.0;
+  
+  // Use percentage-based detection logic (25% threshold) like Arduino code
+  String triggeredBy = '';
+  if (sensor1Percent >= 25.0 && sensor2Percent >= 25.0) {
+    triggeredBy = 'BOTH sensors WET (25-100%)';
+  } else if (sensor1Percent >= 25.0) {
+    triggeredBy = 'SENSOR 1 WET (25-100%)';
+  } else if (sensor2Percent >= 25.0) {
+    triggeredBy = 'SENSOR 2 WET (25-100%)';
+  }
+
+  if (triggeredBy.isEmpty) {
+    return SizedBox.shrink();
+  }
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      SizedBox(height: r.smallSpacing),
+      Text(
+        '🔍 $triggeredBy',
+        style: TextStyle(
+          fontSize: r.smallFontSize,
+          color: Colors.orange[800],
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      SizedBox(height: 2),
+      Text(
+        'Sensor 1: ${sensor1Percent}% | Sensor 2: ${sensor2Percent}%',
+        style: TextStyle(
+          fontSize: r.smallFontSize - 1,
+          color: Colors.grey[600],
+        ),
+      ),
+    ],
+  );
 }

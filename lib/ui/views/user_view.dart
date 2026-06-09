@@ -74,9 +74,9 @@ class _UserViewState extends State<UserView> with TickerProviderStateMixin {
       final prefs = await SharedPreferences.getInstance();
       final imagePath = prefs.getString('profile_image_path');
       if (imagePath != null && File(imagePath).existsSync()) {
-        setState(() {
+      setState(() {
           _profileImage = File(imagePath);
-        });
+      });
       }
     } catch (e) {
       print('Error loading profile image: $e');
@@ -96,9 +96,9 @@ class _UserViewState extends State<UserView> with TickerProviderStateMixin {
         final imageFile = File(image.path);
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('profile_image_path', image.path);
-        setState(() {
+      setState(() {
           _profileImage = imageFile;
-        });
+      });
       }
     } catch (e) {
       if (mounted) {
@@ -507,23 +507,23 @@ class _UserViewState extends State<UserView> with TickerProviderStateMixin {
               GestureDetector(
                 onTap: _pickProfileImage,
                 child: Stack(
-                  children: [
-                    Container(
-                      width: r.isSmallPhone ? 80 : 100,
-                      height: r.isSmallPhone ? 80 : 100,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [Colors.white, Colors.white.withValues(alpha: 0.9)],
-                        ),
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black26,
-                            blurRadius: 12,
-                            offset: Offset(0, 6),
-                          ),
-                        ],
-                      ),
+            children: [
+              Container(
+                width: r.isSmallPhone ? 80 : 100,
+                height: r.isSmallPhone ? 80 : 100,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.white, Colors.white.withValues(alpha: 0.9)],
+                  ),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 12,
+                      offset: Offset(0, 6),
+                    ),
+                  ],
+                ),
                       child: _profileImage != null
                           ? ClipOval(
                               child: Image.file(
@@ -534,35 +534,35 @@ class _UserViewState extends State<UserView> with TickerProviderStateMixin {
                               ),
                             )
                           : Icon(
-                              Icons.person,
-                              size: r.isSmallPhone ? 40 : 50,
-                              color: Color(0xFF1e3c72),
-                            ),
-                    ),
+                  Icons.person,
+                  size: r.isSmallPhone ? 40 : 50,
+                  color: Color(0xFF1e3c72),
+                ),
+              ),
                     Positioned(
                       bottom: 0,
                       right: 0,
                       child: Container(
                         width: r.isSmallPhone ? 28 : 32,
                         height: r.isSmallPhone ? 28 : 32,
-                        decoration: BoxDecoration(
+                decoration: BoxDecoration(
                           color: Color(0xFF1e3c72),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Colors.white,
+                        shape: BoxShape.circle,
+            border: Border.all(
+                  color: Colors.white,
                             width: 2,
                           ),
-                        ),
-                        child: Icon(
+            ),
+            child: Icon(
                           Icons.camera_alt,
                           size: r.isSmallPhone ? 16 : 18,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ],
+              color: Colors.white,
+            ),
+          ),
                 ),
-              ),
+              ],
+            ),
+          ),
               SizedBox(height: r.mediumSpacing),
               Text(
                 (_profile?['full_name'] ?? 'Your Name').toString(),
@@ -576,15 +576,15 @@ class _UserViewState extends State<UserView> with TickerProviderStateMixin {
                 overflow: TextOverflow.ellipsis,
               ),
               SizedBox(height: r.smallSpacing),
-              Text(
+                Text(
                 (_profile?['email'] ?? '').toString(),
-                style: TextStyle(
-                  fontSize: r.isSmallPhone ? 14 : 16,
+                  style: TextStyle(
+                    fontSize: r.isSmallPhone ? 14 : 16,
                   color: Colors.white.withValues(alpha: 0.8),
-                ),
+                  ),
                 textAlign: TextAlign.center,
-                overflow: TextOverflow.ellipsis,
-              ),
+                  overflow: TextOverflow.ellipsis,
+                ),
             ],
           ),
         );
@@ -678,19 +678,19 @@ class _UserViewState extends State<UserView> with TickerProviderStateMixin {
                 children: [
                   Text(
                     label,
-                    style: TextStyle(
-                      fontSize: r.isSmallPhone ? 12 : 14,
-                      color: Colors.white.withValues(alpha: 0.7),
-                    ),
+                      style: TextStyle(
+                        fontSize: r.isSmallPhone ? 12 : 14,
+                        color: Colors.white.withValues(alpha: 0.7),
+                      ),
                     overflow: TextOverflow.ellipsis,
-                  ),
+                    ),
                   SizedBox(height: r.isSmallPhone ? 1 : 2),
-                  Text(
+                    Text(
                     value,
-                    style: TextStyle(
+                      style: TextStyle(
                       fontSize: r.isSmallPhone ? 14 : 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
+              fontWeight: FontWeight.w600,
+                color: Colors.white,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
